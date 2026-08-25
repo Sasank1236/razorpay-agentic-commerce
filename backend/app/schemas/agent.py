@@ -17,13 +17,26 @@ class ToolTrace(BaseModel):
     output_summary: Any
     execution_time_ms: int
 
+class WorkflowStep(BaseModel):
+    step_number: int
+    step_name: str
+    status: str # completed, in_progress, pending
+    detail_message: str
+    execution_time_ms: int = 0
+
 class AgentChatResponse(BaseModel):
     reply: str
     recommended_product: Optional[ProductResponse] = None
     comparison_table: Optional[Dict[str, Any]] = None
     tool_traces: List[ToolTrace] = []
+    workflow_steps: List[WorkflowStep] = []
     requires_user_approval: bool = False
     staged_cart_id: Optional[str] = None
+    staged_order_id: Optional[str] = None
+    coupon_applied: Optional[str] = None
+    original_amount: Optional[float] = None
+    discount_amount: Optional[float] = None
+    final_amount: Optional[float] = None
     suggested_actions: Optional[List[str]] = []
 
 class MerchantGrowthInsight(BaseModel):

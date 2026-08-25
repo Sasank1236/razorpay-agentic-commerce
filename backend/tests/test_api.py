@@ -19,13 +19,18 @@ def test_products_endpoint():
 def test_shopping_agent_chat():
     payload = {
         "user_id": "user_customer_01",
-        "message": "I need wireless headphones under 5000 for calls with good battery"
+        "message": "I need headphones under ₹5,000 for online classes. Good mic is more important than ANC. Buy the best one."
     }
     response = client.post("/api/v1/agents/customer/chat", json=payload)
     assert response.status_code == 200
     data = response.json()
-    assert "SoundMax Pro" in data["reply"] or "Top Recommendation" in data["reply"]
-    assert len(data["tool_traces"]) >= 3
+    assert "SoundMax Pro" in data["reply"] or "Purchase Agent Workflow Complete" in data["reply"]
+    assert len(data["tool_traces"]) >= 5
+    assert len(data["workflow_steps"]) == 11
+    assert data["coupon_applied"] == "STUDENT10"
+    assert data["discount_amount"] == 449.9
+    assert data["final_amount"] == 4049.1
+    assert data["requires_user_approval"] is True
 
 def test_merchant_growth_agent():
     response = client.get("/api/v1/agents/merchant/growth")
