@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect } from 'react';
-import { Bot, Send, X, Sparkles, CheckCircle2, ShoppingCart, ShieldAlert, ChevronRight, Terminal, Star, ArrowRight } from 'lucide-react';
-import { sendAgentMessage, AgentChatResponse, Product } from '@/lib/api';
+import { Bot, Send, X, Sparkles, CheckCircle2, ShoppingCart, ShieldAlert, ChevronRight, Terminal, Star, ArrowRight, Cpu, Tag } from 'lucide-react';
+import { sendAgentMessage, AgentChatResponse, Product, WorkflowStep } from '@/lib/api';
+import PurchaseWorkflowVisualizer from '@/components/PurchaseWorkflowVisualizer';
 
 interface AIChatDrawerProps {
   isOpen: boolean;
@@ -17,9 +18,15 @@ interface MessageItem {
   recommendedProduct?: Product;
   comparisonTable?: Record<string, any>;
   toolTraces?: any[];
+  workflowSteps?: WorkflowStep[];
   requiresApproval?: boolean;
   suggestedActions?: string[];
   stagedCartId?: string;
+  stagedOrderId?: string;
+  couponApplied?: string;
+  originalAmount?: number;
+  discountAmount?: number;
+  finalAmount?: number;
 }
 
 export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout }: AIChatDrawerProps) {
@@ -29,11 +36,11 @@ export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout }: AI
     {
       id: 'welcome_1',
       sender: 'agent',
-      text: "👋 Hi! I'm your **RazorBuy Commerce Agent**. Tell me what you're looking for, budget, or key priorities (e.g. *'Wireless headphones under ₹5,000 for calls and music with long battery'*).",
+      text: "👋 Hi! I'm your **RazorBuy Purchase Agent**. I can execute complete multi-step shopping workflows for you.\n\nTry typing: *'I need headphones under ₹5,000 for online classes. Good mic is more important than ANC. Buy the best one.'*",
       suggestedActions: [
-        "Headphones under ₹5,000 for calls",
-        "Smartwatches with AMOLED & BT calling",
-        "Ergonomic mechanical keyboard"
+        "I need headphones under ₹5,000 for online classes. Good mic is more important than ANC. Buy the best one.",
+        "Smartwatches with AMOLED & BT calling under ₹5k. Buy top pick.",
+        "Ergonomic mechanical keyboard for work. Buy best model."
       ]
     }
   ]);
@@ -70,9 +77,15 @@ export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout }: AI
         recommendedProduct: response.recommended_product,
         comparisonTable: response.comparison_table,
         toolTraces: response.tool_traces,
+        workflowSteps: response.workflow_steps,
         requiresApproval: response.requires_user_approval,
         suggestedActions: response.suggested_actions,
-        stagedCartId: response.staged_cart_id
+        stagedCartId: response.staged_cart_id,
+        stagedOrderId: response.staged_order_id,
+        couponApplied: response.coupon_applied,
+        originalAmount: response.original_amount,
+        discountAmount: response.discount_amount,
+        finalAmount: response.final_amount
       };
       setMessages((prev) => [...prev, agentMsg]);
     } catch (err) {
@@ -90,20 +103,20 @@ export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout }: AI
   };
 
   return (
-    <div className="fixed inset-y-0 right-0 z-50 w-full sm:w-[480px] glass-panel shadow-2xl flex flex-col border-l border-slate-800">
+    <div className="fixed inset-y-0 right-0 z-50 w-full sm:w-[500px] glass-panel shadow-2xl flex flex-col border-l border-slate-800">
       
       {/* Header */}
-      <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/80">
+      <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/90">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center shadow-md">
-            <Bot className="w-5 h-5 text-white" />
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-400 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+            <Cpu className="w-5 h-5 text-white" />
           </div>
           <div>
             <h2 className="font-bold text-white text-base flex items-center gap-1.5">
-              Customer AI Agent <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+              Autonomous Purchase Agent <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
             </h2>
             <p className="text-xs text-slate-400 flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> Tool-Calling Autonomous Agent
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> 11-Step Multi-Tool Purchase Engine
             </p>
           </div>
         </div>
@@ -125,7 +138,7 @@ export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout }: AI
           >
             {/* Message Bubble */}
             <div
-              className={`max-w-[90%] p-3.5 rounded-2xl text-sm leading-relaxed ${
+              className={`max-w-[92%] p-3.5 rounded-2xl text-sm leading-relaxed ${
                 msg.sender === 'user'
                   ? 'bg-indigo-600 text-white rounded-br-none shadow-md shadow-indigo-600/20'
                   : 'bg-slate-800/90 text-slate-200 border border-slate-700 rounded-bl-none'
@@ -134,29 +147,23 @@ export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout }: AI
               <div className="whitespace-pre-line">{msg.text}</div>
             </div>
 
-            {/* Agent Tool Traces Audit Pill */}
-            {msg.toolTraces && msg.toolTraces.length > 0 && (
-              <div className="mt-2 text-xs bg-slate-950/70 border border-slate-800 rounded-xl p-2.5 w-full max-w-[92%]">
-                <div className="text-[10px] text-cyan-400 font-bold uppercase tracking-wider mb-1.5 flex items-center gap-1">
-                  <Terminal className="w-3 h-3 text-cyan-400" /> Agent Decision Log ({msg.toolTraces.length} tools called)
-                </div>
-                <div className="space-y-1">
-                  {msg.toolTraces.map((t, idx) => (
-                    <div key={idx} className="flex items-center justify-between text-[11px] text-slate-400 font-mono bg-slate-900/80 px-2 py-1 rounded">
-                      <span className="text-purple-300 font-medium">⚡ {t.tool_name}()</span>
-                      <span className="text-emerald-400 text-[10px]">{t.execution_time_ms}ms</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+            {/* Visual Workflow Stepper UI */}
+            {msg.workflowSteps && msg.workflowSteps.length > 0 && (
+              <PurchaseWorkflowVisualizer
+                steps={msg.workflowSteps}
+                couponApplied={msg.couponApplied}
+                originalAmount={msg.originalAmount}
+                discountAmount={msg.discountAmount}
+                finalAmount={msg.finalAmount}
+              />
             )}
 
             {/* Recommended Product Card */}
             {msg.recommendedProduct && (
               <div className="mt-3 p-3 bg-slate-900/90 border border-indigo-500/40 rounded-2xl w-full max-w-[92%] shadow-lg">
                 <div className="text-xs text-indigo-400 font-bold uppercase tracking-wider mb-2 flex items-center justify-between">
-                  <span>Top Agent Recommendation</span>
-                  <span className="bg-indigo-500/20 text-indigo-300 text-[10px] px-2 py-0.5 rounded-full">
+                  <span>Selected Best Product</span>
+                  <span className="bg-indigo-500/20 text-indigo-300 text-[10px] px-2 py-0.5 rounded-full font-bold">
                     94.5 / 100 Score
                   </span>
                 </div>
@@ -171,26 +178,35 @@ export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout }: AI
                     <div className="text-xs text-amber-400 flex items-center gap-1 font-semibold mt-0.5">
                       <Star className="w-3 h-3 fill-amber-400" /> {msg.recommendedProduct.rating} ★
                     </div>
-                    <p className="text-sm font-extrabold text-white mt-1">₹{msg.recommendedProduct.price.toLocaleString()}</p>
+                    <div className="flex items-baseline gap-2 mt-1">
+                      <span className="text-sm font-extrabold text-cyan-300">
+                        ₹{(msg.finalAmount || msg.recommendedProduct.price).toLocaleString()}
+                      </span>
+                      {msg.originalAmount && (
+                        <span className="text-xs text-slate-500 line-through">
+                          ₹{msg.originalAmount.toLocaleString()}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Human Approval Required Box */}
+            {/* Human Authorization Required Box */}
             {msg.requiresApproval && (
-              <div className="mt-3 p-3.5 bg-gradient-to-r from-indigo-950/80 to-purple-950/80 border border-cyan-500/50 rounded-2xl w-full max-w-[92%] shadow-xl">
-                <div className="flex items-center gap-2 text-cyan-300 font-bold text-xs uppercase mb-1">
-                  <ShieldAlert className="w-4 h-4 text-cyan-400" /> Human Authorization Required
+              <div className="mt-3 p-4 bg-gradient-to-r from-indigo-950/90 via-purple-950/90 to-slate-900/90 border border-cyan-500/60 rounded-2xl w-full max-w-[95%] shadow-2xl">
+                <div className="flex items-center gap-2 text-cyan-300 font-bold text-xs uppercase tracking-wider mb-1.5">
+                  <ShieldAlert className="w-4 h-4 text-cyan-400" /> Step 11: Human Authorization Guardrail
                 </div>
-                <p className="text-xs text-slate-300 leading-normal">
-                  The AI agent has calculated order totals and staged your transaction safely. Click below to launch Razorpay Test Checkout.
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  The AI Purchase Agent completed steps 1–10 autonomously (stock checked, coupon applied, price calculated, order staged). Click below to launch Razorpay Checkout.
                 </p>
                 <button
                   onClick={() => onInitiateCheckout(msg.recommendedProduct?.id || "prod_001")}
-                  className="mt-3 w-full py-2.5 px-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 transition-all active:scale-98"
+                  className="mt-3.5 w-full py-3 px-4 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-white font-extrabold text-xs uppercase tracking-widest rounded-xl shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 transition-all active:scale-98"
                 >
-                  <ShoppingCart className="w-4 h-4" /> Confirm Purchase & Pay ₹4,499
+                  <ShoppingCart className="w-4 h-4" /> Approve & Pay ₹{(msg.finalAmount || 4049).toLocaleString()} via Razorpay
                 </button>
               </div>
             )}
@@ -216,8 +232,8 @@ export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout }: AI
 
         {loading && (
           <div className="flex items-center gap-2 text-slate-400 text-xs bg-slate-800/50 p-3 rounded-2xl border border-slate-700/50 w-fit">
-            <Bot className="w-4 h-4 text-indigo-400 animate-spin" />
-            <span>AI Agent is searching 105 products & reasoning...</span>
+            <Cpu className="w-4 h-4 text-cyan-400 animate-spin" />
+            <span>Autonomous Purchase Agent executing 11-step workflow...</span>
           </div>
         )}
 
@@ -237,7 +253,7 @@ export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout }: AI
             type="text"
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
-            placeholder="Ask AI: e.g. Headphones under ₹5k for calls..."
+            placeholder="Type: 'Headphones under ₹5k for online classes. Buy the best one.'"
             className="flex-1 bg-slate-800 border border-slate-700 text-white text-sm rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-indigo-500 placeholder-slate-500"
           />
           <button

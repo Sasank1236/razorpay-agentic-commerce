@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from 'react';
-import { ShieldCheck, CreditCard, Lock, CheckCircle2, AlertCircle, X, Sparkles, ShoppingBag } from 'lucide-react';
+import { ShieldCheck, CreditCard, Lock, CheckCircle2, AlertCircle, X, Sparkles, Tag } from 'lucide-react';
 import { createRazorpayOrderApi, verifyPaymentApi } from '@/lib/api';
 
 interface CheckoutModalProps {
@@ -9,10 +9,20 @@ interface CheckoutModalProps {
   onClose: () => void;
   orderId?: string;
   amount?: number;
+  discountAmount?: number;
+  couponCode?: string;
   onPaymentSuccess: () => void;
 }
 
-export default function CheckoutModal({ isOpen, onClose, orderId = "ord_staged_001", amount = 4499.0, onPaymentSuccess }: CheckoutModalProps) {
+export default function CheckoutModal({
+  isOpen,
+  onClose,
+  orderId = "ord_staged_001",
+  amount = 4049.0,
+  discountAmount = 450.0,
+  couponCode = "STUDENT10",
+  onPaymentSuccess,
+}: CheckoutModalProps) {
   const [loading, setLoading] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -98,19 +108,23 @@ export default function CheckoutModal({ isOpen, onClose, orderId = "ord_staged_0
               {/* Amount Breakdown */}
               <div className="bg-slate-900/80 p-4 rounded-2xl border border-slate-800 space-y-2">
                 <div className="flex justify-between text-xs text-slate-400">
-                  <span>Item Subtotal</span>
-                  <span className="text-slate-200">₹{amount.toLocaleString()}</span>
+                  <span>Product Price</span>
+                  <span className="text-slate-200">₹{(amount + (discountAmount || 0)).toLocaleString()}</span>
                 </div>
-                <div className="flex justify-between text-xs text-slate-400">
-                  <span>AI Discount Applied</span>
-                  <span className="text-emerald-400">-₹0.00</span>
-                </div>
+                {discountAmount > 0 && (
+                  <div className="flex justify-between text-xs text-emerald-400 font-semibold">
+                    <span className="flex items-center gap-1">
+                      <Tag className="w-3 h-3" /> Coupon `{couponCode}` Discount
+                    </span>
+                    <span>-₹{discountAmount.toLocaleString()}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-xs text-slate-400">
                   <span>Shipping & Taxes</span>
                   <span className="text-emerald-400">FREE</span>
                 </div>
                 <div className="pt-2 border-t border-slate-800 flex justify-between items-baseline">
-                  <span className="font-bold text-white text-sm">Total Amount</span>
+                  <span className="font-bold text-white text-sm">Net Payable Amount</span>
                   <span className="font-extrabold text-2xl text-cyan-400">₹{amount.toLocaleString()}</span>
                 </div>
               </div>
