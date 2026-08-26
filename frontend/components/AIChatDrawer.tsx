@@ -2,8 +2,9 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { Bot, Send, X, Sparkles, CheckCircle2, ShoppingCart, ShieldAlert, ChevronRight, Terminal, Star, ArrowRight, Cpu, Tag } from 'lucide-react';
-import { sendAgentMessage, AgentChatResponse, Product, WorkflowStep } from '@/lib/api';
+import { sendAgentMessage, AgentChatResponse, Product, WorkflowStep, AINegotiatedOffer } from '@/lib/api';
 import PurchaseWorkflowVisualizer from '@/components/PurchaseWorkflowVisualizer';
+import AINegotiatedOfferBanner from '@/components/AINegotiatedOfferBanner';
 
 interface AIChatDrawerProps {
   isOpen: boolean;
@@ -27,6 +28,7 @@ interface MessageItem {
   originalAmount?: number;
   discountAmount?: number;
   finalAmount?: number;
+  negotiatedOffer?: AINegotiatedOffer;
 }
 
 export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout }: AIChatDrawerProps) {
@@ -36,7 +38,7 @@ export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout }: AI
     {
       id: 'welcome_1',
       sender: 'agent',
-      text: "👋 Hi! I'm your **RazorBuy Purchase Agent**. I can execute complete multi-step shopping workflows for you.\n\nTry typing: *'I need headphones under ₹5,000 for online classes. Good mic is more important than ANC. Buy the best one.'*",
+      text: "👋 Hi! I'm your **RazorBuy Purchase Agent**. I execute 11-step shopping workflows and dynamically negotiate custom offers for you.\n\nTry typing: *'I need headphones under ₹5,000 for online classes. Good mic is more important than ANC. Buy the best one.'*",
       suggestedActions: [
         "I need headphones under ₹5,000 for online classes. Good mic is more important than ANC. Buy the best one.",
         "Smartwatches with AMOLED & BT calling under ₹5k. Buy top pick.",
@@ -85,7 +87,8 @@ export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout }: AI
         couponApplied: response.coupon_applied,
         originalAmount: response.original_amount,
         discountAmount: response.discount_amount,
-        finalAmount: response.final_amount
+        finalAmount: response.final_amount,
+        negotiatedOffer: response.negotiated_offer
       };
       setMessages((prev) => [...prev, agentMsg]);
     } catch (err) {
@@ -116,7 +119,7 @@ export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout }: AI
               Autonomous Purchase Agent <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
             </h2>
             <p className="text-xs text-slate-400 flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> 11-Step Multi-Tool Purchase Engine
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> Dynamic AI Negotiation & Purchase Workflow
             </p>
           </div>
         </div>
@@ -146,6 +149,14 @@ export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout }: AI
             >
               <div className="whitespace-pre-line">{msg.text}</div>
             </div>
+
+            {/* AI Negotiated Offer Banner Component */}
+            {msg.negotiatedOffer && (
+              <AINegotiatedOfferBanner
+                offer={msg.negotiatedOffer}
+                onApproveCheckout={() => onInitiateCheckout(msg.recommendedProduct?.id || "prod_001")}
+              />
+            )}
 
             {/* Visual Workflow Stepper UI */}
             {msg.workflowSteps && msg.workflowSteps.length > 0 && (
@@ -200,13 +211,13 @@ export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout }: AI
                   <ShieldAlert className="w-4 h-4 text-cyan-400" /> Step 11: Human Authorization Guardrail
                 </div>
                 <p className="text-xs text-slate-300 leading-relaxed">
-                  The AI Purchase Agent completed steps 1–10 autonomously (stock checked, coupon applied, price calculated, order staged). Click below to launch Razorpay Checkout.
+                  The AI Purchase Agent completed steps 1–10 autonomously. Click below to confirm AI-negotiated price and launch Razorpay Checkout.
                 </p>
                 <button
                   onClick={() => onInitiateCheckout(msg.recommendedProduct?.id || "prod_001")}
                   className="mt-3.5 w-full py-3 px-4 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-white font-extrabold text-xs uppercase tracking-widest rounded-xl shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 transition-all active:scale-98"
                 >
-                  <ShoppingCart className="w-4 h-4" /> Approve & Pay ₹{(msg.finalAmount || 4049).toLocaleString()} via Razorpay
+                  <ShoppingCart className="w-4 h-4" /> Approve & Pay ₹{(msg.finalAmount || 4184).toLocaleString()} via Razorpay
                 </button>
               </div>
             )}
@@ -233,7 +244,7 @@ export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout }: AI
         {loading && (
           <div className="flex items-center gap-2 text-slate-400 text-xs bg-slate-800/50 p-3 rounded-2xl border border-slate-700/50 w-fit">
             <Cpu className="w-4 h-4 text-cyan-400 animate-spin" />
-            <span>Autonomous Purchase Agent executing 11-step workflow...</span>
+            <span>Autonomous Agent negotiating offer & executing workflow...</span>
           </div>
         )}
 

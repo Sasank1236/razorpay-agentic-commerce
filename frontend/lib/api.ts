@@ -47,6 +47,16 @@ export interface WorkflowStep {
   execution_time_ms: number;
 }
 
+export interface AINegotiatedOffer {
+  coupon_code: string;
+  discount_percent: number;
+  original_price: number;
+  offer_price: number;
+  savings: number;
+  reasoning: string;
+  valid_seconds: number;
+}
+
 export interface AgentChatResponse {
   reply: string;
   recommended_product?: Product;
@@ -60,6 +70,7 @@ export interface AgentChatResponse {
   original_amount?: number;
   discount_amount?: number;
   final_amount?: number;
+  negotiated_offer?: AINegotiatedOffer;
   suggested_actions?: string[];
 }
 
