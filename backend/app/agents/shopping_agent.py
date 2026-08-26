@@ -7,7 +7,7 @@ from app.tools.cart_tools import (
     add_to_cart_tool, create_staged_order_tool, check_inventory_tool,
     apply_coupon_tool, calculate_final_price_tool
 )
-from app.schemas.agent import AgentChatRequest, AgentChatResponse, ToolTrace, WorkflowStep
+from app.schemas.agent import AgentChatRequest, AgentChatResponse, ToolTrace, WorkflowStep, AINegotiatedOffer
 from app.schemas.product import ProductResponse
 from app.config import settings
 
@@ -17,11 +17,9 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
     tool_traces: List[ToolTrace] = []
     workflow_steps: List[WorkflowStep] = []
 
-    # Check if this is a Purchase Intent query (e.g. "buy the best one", "purchase headphones", "order now")
+    # Check if this is a Purchase Intent query
     is_purchase_intent = any(kw in user_msg.lower() for kw in ["buy", "purchase", "checkout", "add to cart", "get it", "order", "buy the best"])
 
-    # Execute full 11-Step Purchase Workflow if user indicates purchase intent or explicit shopping request
-    
     # STEP 1: Understand Request
     t1 = time.time()
     extracted_category = "Audio"
@@ -132,26 +130,26 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
         execution_time_ms=int((time.time() - t7) * 1000)
     ))
 
-    # STEP 8: Apply Available Coupon
+    # STEP 8: Dynamic AI Coupon Negotiation
     t8 = time.time()
-    coupon_res = apply_coupon_tool(db, query=user_msg, amount=best_product_data["price"])
+    coupon_res = apply_coupon_tool(db, query=user_msg, amount=best_product_data["price"], product_id=best_p_id, user_id=user_id)
     tool_traces.append(ToolTrace(
-        tool_name="apply_coupon",
-        input_args={"query": user_msg, "amount": best_product_data["price"]},
+        tool_name="negotiate_dynamic_coupon",
+        input_args={"query": user_msg, "amount": best_product_data["price"], "product_id": best_p_id},
         output_summary=coupon_res,
         execution_time_ms=int((time.time() - t8) * 1000)
     ))
     workflow_steps.append(WorkflowStep(
         step_number=8,
-        step_name="Apply Available Coupon",
+        step_name="Dynamic AI Coupon Negotiation",
         status="completed",
-        detail_message=f"Applied promotional coupon '{coupon_res['coupon_code']}' ({coupon_res['discount_percent']}% off, saved ₹{coupon_res['discount_amount']:,.0f}).",
+        detail_message=f"AI Negotiated {coupon_res['discount_percent']}% offer (`{coupon_res['coupon_code']}`): Saved ₹{coupon_res['discount_amount']:,.0f}. Reason: {coupon_res['reason']}",
         execution_time_ms=int((time.time() - t8) * 1000)
     ))
 
     # STEP 9: Calculate Final Price
     t9 = time.time()
-    price_res = calculate_final_price_tool(db, product_id=best_p_id, quantity=1, query=user_msg)
+    price_res = calculate_final_price_tool(db, product_id=best_p_id, quantity=1, query=user_msg, user_id=user_id)
     tool_traces.append(ToolTrace(
         tool_name="calculate_final_price",
         input_args={"product_id": best_p_id, "quantity": 1},
@@ -162,7 +160,7 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
         step_number=9,
         step_name="Calculate Final Price",
         status="completed",
-        detail_message=f"Calculated net payable amount: ₹{price_res['original_amount']:,.0f} (Original) - ₹{price_res['discount_amount']:,.0f} (Coupon) = ₹{price_res['final_amount']:,.0f} Net.",
+        detail_message=f"Calculated net payable total: ₹{price_res['original_amount']:,.0f} (Original) - ₹{price_res['discount_amount']:,.0f} (AI Offer) = ₹{price_res['final_amount']:,.0f} Net.",
         execution_time_ms=int((time.time() - t9) * 1000)
     ))
 
@@ -176,7 +174,7 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
         execution_time_ms=int((time.time() - t10) * 1000)
     ))
 
-    order_res = create_staged_order_tool(db, cart_id=cart_res["cart_id"], coupon_code=price_res["coupon_code"], user_id=user_id)
+    order_res = create_staged_order_tool(db, cart_id=cart_res["cart_id"], coupon_code=price_res["coupon_code"], discount_amount=price_res["discount_amount"], user_id=user_id)
     tool_traces.append(ToolTrace(
         tool_name="create_staged_order",
         input_args={"cart_id": cart_res["cart_id"], "coupon_code": price_res["coupon_code"]},
@@ -203,14 +201,27 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
     p_details = get_product_details(db, best_p_id)
     prod_resp = ProductResponse(**p_details) if p_details else None
 
+    # Construct AINegotiatedOffer object
+    negotiated_offer_data = AINegotiatedOffer(
+        coupon_code=price_res["coupon_code"],
+        discount_percent=price_res["discount_percent"],
+        original_price=price_res["original_amount"],
+        offer_price=price_res["final_amount"],
+        savings=price_res["discount_amount"],
+        reasoning=coupon_res["reason"],
+        valid_seconds=coupon_res["valid_seconds"]
+    )
+
     reply_text = (
-        f"🤖 **Purchase Agent Workflow Complete!**\n\n"
+        f"🤖 **Purchase Agent Workflow Complete & AI Offer Negotiated!**\n\n"
         f"I executed the complete 11-step shopping workflow for your request **\"{user_msg}\"**:\n"
         f"• **Selected Item**: {best_product_data['title']} (Score: {best_product_data['score']}/100)\n"
         f"• **Inventory Status**: {inv_res['stock_quantity']} units in stock\n"
-        f"• **Coupon Applied**: `{price_res['coupon_code']}` ({price_res['discount_percent']}% discount: -₹{price_res['discount_amount']:,.0f})\n"
-        f"• **Final Net Amount**: **₹{price_res['final_amount']:,.0f}** *(Original: ₹{price_res['original_amount']:,.0f})*\n\n"
-        f"⚠️ **Human Authorization Required**: The AI agent has calculated pricing and staged order `#{order_res['order_id']}` safely. Click **Approve & Pay via Razorpay** to proceed."
+        f"• **AI Negotiated Offer**: `{price_res['coupon_code']}` ({price_res['discount_percent']}% discount)\n"
+        f"• **AI Reasoning**: *\"{coupon_res['reason']}\"*\n"
+        f"• **Final Net Amount**: **₹{price_res['final_amount']:,.0f}** *(Original: ₹{price_res['original_amount']:,.0f}, Saved: ₹{price_res['discount_amount']:,.0f})*\n"
+        f"• **Offer Expiry**: ⏳ Valid for 10 minutes\n\n"
+        f"⚠️ **Human Authorization Required**: Click **Approve & Pay via Razorpay** to complete checkout."
     )
 
     return AgentChatResponse(
@@ -226,5 +237,6 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
         original_amount=price_res["original_amount"],
         discount_amount=price_res["discount_amount"],
         final_amount=price_res["final_amount"],
+        negotiated_offer=negotiated_offer_data,
         suggested_actions=[f"Approve & Pay ₹{price_res['final_amount']:,.0f} via Razorpay", "View Spec Comparison", "Check Stock Inventory"]
     )

@@ -24,6 +24,15 @@ class WorkflowStep(BaseModel):
     detail_message: str
     execution_time_ms: int = 0
 
+class AINegotiatedOffer(BaseModel):
+    coupon_code: str
+    discount_percent: float
+    original_price: float
+    offer_price: float
+    savings: float
+    reasoning: str
+    valid_seconds: int = 600
+
 class AgentChatResponse(BaseModel):
     reply: str
     recommended_product: Optional[ProductResponse] = None
@@ -37,6 +46,7 @@ class AgentChatResponse(BaseModel):
     original_amount: Optional[float] = None
     discount_amount: Optional[float] = None
     final_amount: Optional[float] = None
+    negotiated_offer: Optional[AINegotiatedOffer] = None
     suggested_actions: Optional[List[str]] = []
 
 class MerchantGrowthInsight(BaseModel):

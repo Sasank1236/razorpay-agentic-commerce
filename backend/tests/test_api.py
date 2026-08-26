@@ -27,9 +27,10 @@ def test_shopping_agent_chat():
     assert "SoundMax Pro" in data["reply"] or "Purchase Agent Workflow Complete" in data["reply"]
     assert len(data["tool_traces"]) >= 5
     assert len(data["workflow_steps"]) == 11
-    assert data["coupon_applied"] == "STUDENT10"
-    assert data["discount_amount"] == 449.9
-    assert data["final_amount"] == 4049.1
+    assert data["negotiated_offer"] is not None
+    assert data["negotiated_offer"]["discount_percent"] > 0
+    assert data["negotiated_offer"]["savings"] > 0
+    assert "high purchase intent" in data["negotiated_offer"]["reasoning"]
     assert data["requires_user_approval"] is True
 
 def test_merchant_growth_agent():
