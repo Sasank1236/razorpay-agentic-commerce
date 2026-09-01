@@ -57,6 +57,14 @@ export interface AINegotiatedOffer {
   valid_seconds: number;
 }
 
+export interface CustomerMemoryProfile {
+  preferred_brands: string[];
+  avoid_traits: string[];
+  primary_use_cases: string[];
+  budget_ceiling: number;
+  memory_summary: string;
+}
+
 export interface AgentChatResponse {
   reply: string;
   recommended_product?: Product;
@@ -71,6 +79,7 @@ export interface AgentChatResponse {
   discount_amount?: number;
   final_amount?: number;
   negotiated_offer?: AINegotiatedOffer;
+  memory_profile?: CustomerMemoryProfile;
   suggested_actions?: string[];
 }
 

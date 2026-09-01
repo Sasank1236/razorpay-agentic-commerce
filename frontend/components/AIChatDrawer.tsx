@@ -2,9 +2,10 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { Bot, Send, X, Sparkles, CheckCircle2, ShoppingCart, ShieldAlert, ChevronRight, Terminal, Star, ArrowRight, Cpu, Tag } from 'lucide-react';
-import { sendAgentMessage, AgentChatResponse, Product, WorkflowStep, AINegotiatedOffer } from '@/lib/api';
+import { sendAgentMessage, AgentChatResponse, Product, WorkflowStep, AINegotiatedOffer, CustomerMemoryProfile } from '@/lib/api';
 import PurchaseWorkflowVisualizer from '@/components/PurchaseWorkflowVisualizer';
 import AINegotiatedOfferBanner from '@/components/AINegotiatedOfferBanner';
+import CustomerMemoryBadge from '@/components/CustomerMemoryBadge';
 
 interface AIChatDrawerProps {
   isOpen: boolean;
@@ -29,6 +30,7 @@ interface MessageItem {
   discountAmount?: number;
   finalAmount?: number;
   negotiatedOffer?: AINegotiatedOffer;
+  memoryProfile?: CustomerMemoryProfile;
 }
 
 export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout }: AIChatDrawerProps) {
@@ -38,11 +40,11 @@ export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout }: AI
     {
       id: 'welcome_1',
       sender: 'agent',
-      text: "👋 Hi! I'm your **RazorBuy Purchase Agent**. I execute 11-step shopping workflows and dynamically negotiate custom offers for you.\n\nTry typing: *'I need headphones under ₹5,000 for online classes. Good mic is more important than ANC. Buy the best one.'*",
+      text: "👋 Hi! I'm your **Personalized RazorBuy Purchase Agent**. I remember your brand preferences across sessions, execute 11-step workflows, and dynamically negotiate custom offers for you.\n\nTry testing multi-session memory:\n**Session 1**: *'I prefer Sony products and I don't like bulky headphones.'*\n**Session 2**: *'Find headphones for travel.'*",
       suggestedActions: [
-        "I need headphones under ₹5,000 for online classes. Good mic is more important than ANC. Buy the best one.",
-        "Smartwatches with AMOLED & BT calling under ₹5k. Buy top pick.",
-        "Ergonomic mechanical keyboard for work. Buy best model."
+        "I prefer Sony products and I don't like bulky headphones.",
+        "Find headphones for travel.",
+        "I need headphones under ₹5,000 for online classes. Buy best one."
       ]
     }
   ]);
@@ -88,7 +90,8 @@ export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout }: AI
         originalAmount: response.original_amount,
         discountAmount: response.discount_amount,
         finalAmount: response.final_amount,
-        negotiatedOffer: response.negotiated_offer
+        negotiatedOffer: response.negotiated_offer,
+        memoryProfile: response.memory_profile
       };
       setMessages((prev) => [...prev, agentMsg]);
     } catch (err) {
@@ -116,10 +119,10 @@ export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout }: AI
           </div>
           <div>
             <h2 className="font-bold text-white text-base flex items-center gap-1.5">
-              Autonomous Purchase Agent <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+              Personalized Purchase Agent <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
             </h2>
             <p className="text-xs text-slate-400 flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> Dynamic AI Negotiation & Purchase Workflow
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> Persistent Customer Memory Active
             </p>
           </div>
         </div>
@@ -149,6 +152,11 @@ export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout }: AI
             >
               <div className="whitespace-pre-line">{msg.text}</div>
             </div>
+
+            {/* Customer Memory Profile Badge */}
+            {msg.memoryProfile && (
+              <CustomerMemoryBadge memory={msg.memoryProfile} />
+            )}
 
             {/* AI Negotiated Offer Banner Component */}
             {msg.negotiatedOffer && (
@@ -244,7 +252,7 @@ export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout }: AI
         {loading && (
           <div className="flex items-center gap-2 text-slate-400 text-xs bg-slate-800/50 p-3 rounded-2xl border border-slate-700/50 w-fit">
             <Cpu className="w-4 h-4 text-cyan-400 animate-spin" />
-            <span>Autonomous Agent negotiating offer & executing workflow...</span>
+            <span>Autonomous Agent recalling memory & executing workflow...</span>
           </div>
         )}
 
@@ -264,7 +272,7 @@ export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout }: AI
             type="text"
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
-            placeholder="Type: 'Headphones under ₹5k for online classes. Buy the best one.'"
+            placeholder="Try: 'I prefer Sony and dislike bulky headphones.'"
             className="flex-1 bg-slate-800 border border-slate-700 text-white text-sm rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-indigo-500 placeholder-slate-500"
           />
           <button
