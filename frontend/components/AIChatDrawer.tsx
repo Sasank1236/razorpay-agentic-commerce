@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from 'react';
-import { Bot, Send, X, Sparkles, CheckCircle2, ShoppingCart, ShieldAlert, ChevronRight, Terminal, Star, ArrowRight, Cpu, Tag } from 'lucide-react';
+import { Bot, Send, X, Sparkles, CheckCircle2, ShoppingCart, ShieldAlert, ChevronRight, Terminal, Star, ArrowRight, Cpu, Tag, PackageCheck } from 'lucide-react';
 import { sendAgentMessage, AgentChatResponse, Product, WorkflowStep, AINegotiatedOffer, CustomerMemoryProfile } from '@/lib/api';
 import PurchaseWorkflowVisualizer from '@/components/PurchaseWorkflowVisualizer';
 import AINegotiatedOfferBanner from '@/components/AINegotiatedOfferBanner';
@@ -60,6 +60,36 @@ export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout }: AI
   }, [messages, loading]);
 
   if (!isOpen) return null;
+
+  const renderFormattedText = (text: string) => {
+    if (!text) return null;
+    const lines = text.split('\n');
+    return lines.map((line, lIdx) => {
+      // Split by **bold** and `code`
+      const parts = line.split(/(\*\*.*?\*\*|`.*?`)/g);
+      return (
+        <div key={lIdx} className={lIdx > 0 ? "mt-1.5" : ""}>
+          {parts.map((part, pIdx) => {
+            if (part.startsWith('**') && part.endsWith('**')) {
+              return (
+                <strong key={pIdx} className="font-extrabold text-white">
+                  {part.slice(2, -2)}
+                </strong>
+              );
+            } else if (part.startsWith('`') && part.endsWith('`')) {
+              return (
+                <code key={pIdx} className="bg-slate-950 text-cyan-300 px-1.5 py-0.5 rounded text-xs font-mono border border-slate-700">
+                  {part.slice(1, -1)}
+                </code>
+              );
+            } else {
+              return <span key={pIdx}>{part}</span>;
+            }
+          })}
+        </div>
+      );
+    });
+  };
 
   const handleSend = async (textToSend?: string) => {
     const text = textToSend || inputMessage;
@@ -150,7 +180,7 @@ export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout }: AI
                   : 'bg-slate-800/90 text-slate-200 border border-slate-700 rounded-bl-none'
               }`}
             >
-              <div className="whitespace-pre-line">{msg.text}</div>
+              <div>{renderFormattedText(msg.text)}</div>
             </div>
 
             {/* Customer Memory Profile Badge */}

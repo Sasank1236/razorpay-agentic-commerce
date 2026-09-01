@@ -37,8 +37,16 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
         p_details = get_product_details(db, "prod_001")
         prod_resp = ProductResponse(**p_details) if p_details else None
 
+        clean_report = (
+            "📦 **Real-Time Stock Inventory Report**\n\n"
+            f"• **Product**: {inv_res['product_title']} (`prod_001`)\n"
+            f"• **Available Stock**: **{inv_res['stock_quantity']} units in stock**\n"
+            f"• **Inventory Status**: {inv_res['status']} & Ready for Immediate Dispatch\n"
+            "• **Fulfillment Location**: Main Bengaluru Commerce Center"
+        )
+
         return AgentChatResponse(
-            reply=f"📦 **Real-Time Stock Inventory Report**\n\n• **Product**: {inv_res['product_title']} (`prod_001`)\n• **Stock Quantity**: **{inv_res['stock_quantity']} units in stock**\n• **Availability Status**: {inv_res['status']}\n• **Fulfillment Center**: Main Bengaluru Warehouse",
+            reply=clean_report,
             recommended_product=prod_resp,
             tool_traces=tool_traces,
             workflow_steps=[],
