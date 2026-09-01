@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.models import Cart, Product, SearchEvent, Campaign, AgentAction
 from app.services.analytics_service import get_merchant_kpi_summary
 from app.services.cart_recovery_service import analyze_abandoned_carts, execute_recovery_campaign
+from app.services.campaign_feedback_service import measure_campaign_outcomes_and_learn, optimize_campaign_parameter
 from app.tools.product_tools import log_agent_action
 
 def analyze_commerce_metrics_tool(db: Session) -> Dict[str, Any]:
@@ -18,6 +19,13 @@ def analyze_commerce_metrics_tool(db: Session) -> Dict[str, Any]:
         "insights_summary": f"Headphone demand is up +23%, but conversion in Electronics < ₹5,000 remains at 9.2%. {recovery_info['abandoned_count']} high-value carts sit abandoned (₹{recovery_info['at_risk_revenue']:,.0f} at risk)."
     }
     log_agent_action(db, "merchant_growth", "analyze_commerce_metrics", {}, out, start_time)
+    return out
+
+def measure_campaign_performance_tool(db: Session) -> List[Dict[str, Any]]:
+    start_time = time.time()
+    feedback_data = measure_campaign_outcomes_and_learn(db, campaign_id="camp_001")
+    out = [feedback_data]
+    log_agent_action(db, "merchant_growth", "measure_campaign_performance", {}, {"measured_count": len(out)}, start_time)
     return out
 
 def detect_growth_opportunities_tool(db: Session) -> List[Dict[str, Any]]:
@@ -87,6 +95,9 @@ def detect_growth_opportunities_tool(db: Session) -> List[Dict[str, Any]]:
 def simulate_campaign_action_tool(db: Session, campaign_payload: Dict[str, Any]) -> Dict[str, Any]:
     start_time = time.time()
     
+    if campaign_payload.get("action_type") == "optimize_discount":
+        return optimize_campaign_parameter(db, campaign_id="camp_001", new_discount_pct=campaign_payload.get("discount_percent", 3.0))
+
     if campaign_payload.get("action_type") == "send_personalized_recovery_offer" or campaign_payload.get("coupon_code") == "RECOVER5":
         return execute_recovery_campaign(db, campaign_payload)
 
