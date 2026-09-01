@@ -33,6 +33,30 @@ def test_shopping_agent_chat():
     assert "high purchase intent" in data["negotiated_offer"]["reasoning"]
     assert data["requires_user_approval"] is True
 
+def test_customer_memory_persistence():
+    # Session 1: State preferences
+    p1 = {
+        "user_id": "user_customer_02",
+        "message": "I prefer Sony products and I don't like bulky headphones."
+    }
+    res1 = client.post("/api/v1/agents/customer/chat", json=p1)
+    assert res1.status_code == 200
+    data1 = res1.json()
+    assert data1["memory_profile"] is not None
+    assert "Sony" in data1["memory_profile"]["preferred_brands"]
+    assert any("bulky" in t for t in data1["memory_profile"]["avoid_traits"])
+
+    # Session 2: Query for travel using stored memory
+    p2 = {
+        "user_id": "user_customer_02",
+        "message": "Find headphones for travel."
+    }
+    res2 = client.post("/api/v1/agents/customer/chat", json=p2)
+    assert res2.status_code == 200
+    data2 = res2.json()
+    assert data2["memory_profile"] is not None
+    assert "Sony" in data2["memory_profile"]["preferred_brands"]
+
 def test_merchant_growth_agent():
     response = client.get("/api/v1/agents/merchant/growth")
     assert response.status_code == 200

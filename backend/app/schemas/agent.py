@@ -33,6 +33,13 @@ class AINegotiatedOffer(BaseModel):
     reasoning: str
     valid_seconds: int = 600
 
+class CustomerMemoryProfile(BaseModel):
+    preferred_brands: List[str] = []
+    avoid_traits: List[str] = []
+    primary_use_cases: List[str] = []
+    budget_ceiling: float = 5000.0
+    memory_summary: str = ""
+
 class AgentChatResponse(BaseModel):
     reply: str
     recommended_product: Optional[ProductResponse] = None
@@ -47,6 +54,7 @@ class AgentChatResponse(BaseModel):
     discount_amount: Optional[float] = None
     final_amount: Optional[float] = None
     negotiated_offer: Optional[AINegotiatedOffer] = None
+    memory_profile: Optional[CustomerMemoryProfile] = None
     suggested_actions: Optional[List[str]] = []
 
 class MerchantGrowthInsight(BaseModel):

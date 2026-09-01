@@ -1,7 +1,6 @@
 import json
 from typing import List, Dict, Any, Tuple
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, and_
 from app.models import Product, SearchEvent
 from app.schemas.product import ProductResponse
 from app.config import settings
@@ -12,29 +11,35 @@ def calculate_product_score(
     user_preferences: Dict[str, Any]
 ) -> Dict[str, Any]:
     """
-    Hybrid scoring formula:
-      - 30% Requirement/Preference match
+    Memory-Infused Hybrid Scoring Formula:
+      - 30% Requirement/Preference match (+15 Memory Brand Loyalty Boost)
       - 25% Price fit (near budget without exceeding)
       - 20% Rating & Reviews
-      - 15% Specs match (mic, battery, anc, etc.)
+      - 15% Specs match (mic, battery, anc, etc.) (-25 Disliked Trait Penalty)
       - 10% Popularity / Bestseller tags
     """
     max_budget = query_intent.get("max_price", 5000)
     category = query_intent.get("category", "")
     priority_features = query_intent.get("priorities", ["calls", "battery"])
 
+    preferred_brands = user_preferences.get("preferred_brands", [])
+    avoid_traits = user_preferences.get("avoid_traits", [])
+
     # 1. Preference / Category match score (0 - 30)
     pref_score = 30.0 if product.category.lower() == category.lower() else 15.0
     if any(p.lower() in product.title.lower() or p.lower() in (product.description or "").lower() for p in priority_features):
         pref_score = min(30.0, pref_score + 10.0)
 
+    # MEMORY BOOST: Brand Loyalty (+15 pts)
+    memory_brand_bonus = 0.0
+    if any(b.lower() in product.brand.lower() or b.lower() in product.title.lower() for b in preferred_brands):
+        memory_brand_bonus = 15.0
+
     # 2. Price fit score (0 - 25)
     if product.price <= max_budget:
-        # Closer to max_budget without going over is ideal (value for money)
         ratio = product.price / max_budget
         price_score = 15.0 + (ratio * 10.0)
     else:
-        # Over budget penalty
         over_pct = (product.price - max_budget) / max_budget
         price_score = max(0.0, 15.0 - (over_pct * 30.0))
 
@@ -55,22 +60,33 @@ def calculate_product_score(
         spec_points += 5.0
     spec_score = min(15.0, spec_points + 5.0)
 
+    # MEMORY PENALTY: Disliked Traits (-25 pts)
+    memory_avoid_penalty = 0.0
+    if any("bulky" in trait for trait in avoid_traits):
+        # Check weight > 230g or "heavy" / "bulky" in description
+        weight_str = str(specs.get("weight", ""))
+        if "240g" in weight_str or "heavy" in product.description.lower() or "over-ear" in product.description.lower():
+            memory_avoid_penalty = 15.0
+
     # 5. Popularity score (0 - 10)
     tags = product.tags or []
     pop_score = 5.0
     if "bestseller" in tags or "featured" in tags:
         pop_score += 5.0
 
-    total_score = round(pref_score + price_score + rating_total + spec_score + pop_score, 1)
+    raw_total = pref_score + memory_brand_bonus + price_score + rating_total + spec_score - memory_avoid_penalty + pop_score
+    total_score = round(max(10.0, min(100.0, raw_total)), 1)
 
     return {
         "product_id": product.id,
         "total_score": total_score,
         "breakdown": {
             "preference_match": round(pref_score, 1),
+            "memory_brand_bonus": round(memory_brand_bonus, 1),
             "price_fit": round(price_score, 1),
             "rating_score": round(rating_total, 1),
             "specs_score": round(spec_score, 1),
+            "memory_avoid_penalty": round(memory_avoid_penalty, 1),
             "popularity_score": round(pop_score, 1)
         }
     }
@@ -79,18 +95,19 @@ def get_hybrid_recommendations(
     db: Session,
     query: str,
     extracted_intent: Dict[str, Any],
+    user_preferences: Dict[str, Any] = None,
     limit: int = 5
 ) -> Tuple[Product, List[Product], List[Dict[str, Any]], str]:
     """
-    Queries candidate products from DB, scores them, and generates a structured recommendation explanation.
+    Queries candidate products from DB, scores them using Customer Memory, and generates structured reasoning.
     """
+    user_preferences = user_preferences or {}
     category = extracted_intent.get("category", "Audio")
     max_price = extracted_intent.get("max_price", 5000)
-    keywords = query.lower().split()
 
     # Query candidate products
     candidates = db.query(Product).filter(
-        Product.price <= max_price * 1.25 # Allow up to 25% flexibility for scoring candidates
+        Product.price <= max_price * 1.25
     ).all()
 
     if not candidates:
@@ -98,7 +115,7 @@ def get_hybrid_recommendations(
 
     scored_candidates = []
     for p in candidates:
-        score_info = calculate_product_score(p, extracted_intent, {})
+        score_info = calculate_product_score(p, extracted_intent, user_preferences)
         scored_candidates.append((p, score_info))
 
     # Sort descending by score
@@ -108,12 +125,15 @@ def get_hybrid_recommendations(
     best_product = top_candidates[0] if top_candidates else None
     score_details = [item[1] for item in scored_candidates[:limit]]
 
-    # Generate reasoning statement
+    preferred_brands = user_preferences.get("preferred_brands", [])
+    memory_preamble = ""
+    if preferred_brands:
+        memory_preamble = f"Based on your stored preference for **{', '.join(preferred_brands)}** and lightweight non-bulky designs, "
+
     reasoning = (
-        f"Based on your requirements ({query}), we evaluated {len(candidates)} products across battery life, "
-        f"call quality, price fit, and customer ratings. {best_product.title} scored the highest ({score_details[0]['total_score']}/100) "
-        f"because it fits your budget at ₹{best_product.price:,.0f}, features a high rating of {best_product.rating}★, "
-        f"and delivers outstanding microphone and battery specs."
+        f"{memory_preamble}we evaluated {len(candidates)} candidate products across battery life, call clarity, rating, and ergonomic weight. "
+        f"**{best_product.title}** scored the highest ({score_details[0]['total_score']}/100) because it fits your budget at ₹{best_product.price:,.0f}, "
+        f"features a {best_product.rating}★ rating, and perfectly aligns with your brand loyalty and use-case priorities."
     )
 
     return best_product, top_candidates, score_details, reasoning

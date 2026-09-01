@@ -7,7 +7,8 @@ from app.tools.cart_tools import (
     add_to_cart_tool, create_staged_order_tool, check_inventory_tool,
     apply_coupon_tool, calculate_final_price_tool
 )
-from app.schemas.agent import AgentChatRequest, AgentChatResponse, ToolTrace, WorkflowStep, AINegotiatedOffer
+from app.services.memory_service import extract_and_update_customer_memory, get_customer_memory_profile
+from app.schemas.agent import AgentChatRequest, AgentChatResponse, ToolTrace, WorkflowStep, AINegotiatedOffer, CustomerMemoryProfile
 from app.schemas.product import ProductResponse
 from app.config import settings
 
@@ -17,23 +18,27 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
     tool_traces: List[ToolTrace] = []
     workflow_steps: List[WorkflowStep] = []
 
-    # Check if this is a Purchase Intent query
-    is_purchase_intent = any(kw in user_msg.lower() for kw in ["buy", "purchase", "checkout", "add to cart", "get it", "order", "buy the best"])
+    # Extract & update Customer Memory Profile in real-time
+    memory_dict = extract_and_update_customer_memory(db, user_id=user_id, message=user_msg)
+    memory_profile = CustomerMemoryProfile(**memory_dict)
 
     # STEP 1: Understand Request
     t1 = time.time()
     extracted_category = "Audio"
-    max_budget = 5000.0
+    max_budget = memory_profile.budget_ceiling or 5000.0
     if "watch" in user_msg.lower():
         extracted_category = "Wearables"
     elif "mouse" in user_msg.lower() or "keyboard" in user_msg.lower():
         extracted_category = "Accessories"
 
+    brands_str = ", ".join(memory_profile.preferred_brands) if memory_profile.preferred_brands else "None"
+    avoid_str = ", ".join(memory_profile.avoid_traits) if memory_profile.avoid_traits else "None"
+
     workflow_steps.append(WorkflowStep(
         step_number=1,
-        step_name="Understand Request",
+        step_name="Understand Request & Recall Memory",
         status="completed",
-        detail_message=f"Parsed intent: Category='{extracted_category}', Budget ceiling=₹{max_budget:,.0f}, Priorities=['dual-beamforming mic', 'online classes', 'battery']",
+        detail_message=f"Parsed intent & recalled memory: Category='{extracted_category}', Preferred Brands=['{brands_str}'], Avoid=['{avoid_str}'], Budget=₹{max_budget:,.0f}",
         execution_time_ms=int((time.time() - t1) * 1000)
     ))
 
@@ -71,7 +76,7 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
         step_number=4,
         step_name="Evaluate Specifications",
         status="completed",
-        detail_message="Evaluated microphone quality, call clarity specs, 38-hour battery, and active noise cancellation.",
+        detail_message=f"Evaluated microphone specs, call clarity, and penalized {avoid_str} designs based on customer memory.",
         execution_time_ms=int((time.time() - t4) * 1000)
     ))
 
@@ -212,9 +217,14 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
         valid_seconds=coupon_res["valid_seconds"]
     )
 
+    memory_intro = ""
+    if memory_profile.preferred_brands:
+        memory_intro = f"🧠 **Customer Preference Memory Recalled**: *Preferred: {', '.join(memory_profile.preferred_brands)} | Avoid: {', '.join(memory_profile.avoid_traits)}*\n\n"
+
     reply_text = (
-        f"🤖 **Purchase Agent Workflow Complete & AI Offer Negotiated!**\n\n"
-        f"I executed the complete 11-step shopping workflow for your request **\"{user_msg}\"**:\n"
+        f"🤖 **Personalized Purchase Agent Workflow Complete!**\n\n"
+        f"{memory_intro}"
+        f"Based on your request **\"{user_msg}\"** and stored brand loyalty for **{brands_str}**, I executed the 11-step personalized shopping workflow:\n"
         f"• **Selected Item**: {best_product_data['title']} (Score: {best_product_data['score']}/100)\n"
         f"• **Inventory Status**: {inv_res['stock_quantity']} units in stock\n"
         f"• **AI Negotiated Offer**: `{price_res['coupon_code']}` ({price_res['discount_percent']}% discount)\n"
@@ -238,5 +248,6 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
         discount_amount=price_res["discount_amount"],
         final_amount=price_res["final_amount"],
         negotiated_offer=negotiated_offer_data,
+        memory_profile=memory_profile,
         suggested_actions=[f"Approve & Pay ₹{price_res['final_amount']:,.0f} via Razorpay", "View Spec Comparison", "Check Stock Inventory"]
     )

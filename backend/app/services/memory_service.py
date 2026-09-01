@@ -44,6 +44,8 @@ def extract_and_update_customer_memory(db: Session, user_id: str = "user_custome
     Extracts brand preferences, traits to avoid, and use cases from customer chat prompts,
     then updates the User preferences JSON in the database.
     """
+    from app.tools.product_tools import log_agent_action
+
     start_time = time.time()
     user = db.query(User).filter(User.id == user_id).first()
     if not user:

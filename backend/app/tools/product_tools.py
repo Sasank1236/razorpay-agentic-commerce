@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from app.models import Product, Inventory, User, AgentAction, SearchEvent
 from app.services.recommendation import get_hybrid_recommendations
+from app.services.memory_service import get_customer_memory_profile
 
 def log_agent_action(db: Session, agent_type: str, action_name: str, input_params: Any, output_summary: Any, start_time: float):
     exec_time = int((time.time() - start_time) * 1000)
@@ -28,7 +29,6 @@ def search_products(db: Session, query: str, category: Optional[str] = None, max
     if max_price:
         q = q.filter(Product.price <= max_price)
 
-    # Search keyword matching
     keywords = query.lower().split()
     results = q.all()
     filtered = []
@@ -48,7 +48,6 @@ def search_products(db: Session, query: str, category: Optional[str] = None, max
         "image_url": p.image_url
     } for p in (filtered[:8] if filtered else results[:8])]
 
-    # Save search event for analytics
     search_evt = SearchEvent(
         id=f"se_{uuid.uuid4().hex[:8]}",
         user_id="user_customer_01",
@@ -112,12 +111,13 @@ def compare_products(db: Session, product_ids: List[str]) -> Dict[str, Any]:
 def get_recommendations_tool(db: Session, query: str, user_id: str = "user_customer_01") -> Dict[str, Any]:
     start_time = time.time()
     
-    # Extract intent heuristically or budget defaults
     max_price = 5000.0
     if "< 5000" in query or "under 5000" in query or "under 5k" in query or "below 5000" in query or "under 5000 rs" in query:
         max_price = 5000.0
     elif "under 10000" in query or "under 10k" in query:
         max_price = 10000.0
+    elif "travel" in query.lower():
+        max_price = 30000.0 # Allow flagship travel headphones if query requests travel
 
     category = "Audio"
     if "watch" in query.lower() or "fitness" in query.lower():
@@ -127,9 +127,10 @@ def get_recommendations_tool(db: Session, query: str, user_id: str = "user_custo
     elif "laptop" in query.lower() or "macbook" in query.lower():
         category = "Laptops"
 
+    user_preferences = get_customer_memory_profile(db, user_id)
     intent = {"category": category, "max_price": max_price, "priorities": ["calls", "battery", "mic"]}
     
-    best_p, top_candidates, scores, reasoning = get_hybrid_recommendations(db, query, intent, limit=4)
+    best_p, top_candidates, scores, reasoning = get_hybrid_recommendations(db, query, intent, user_preferences, limit=4)
     
     out = {
         "recommended_product": {
