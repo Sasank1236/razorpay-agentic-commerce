@@ -17,7 +17,7 @@ def run_growth_agent(db: Session) -> MerchantGrowthResponse:
         execution_time_ms=int((time.time() - start_t1) * 1000)
     ))
 
-    # 2. Detect growth opportunities
+    # 2. Detect growth opportunities & AI cart recovery
     start_t2 = time.time()
     opps_res = detect_growth_opportunities_tool(db)
     tool_traces.append(ToolTrace(
@@ -33,6 +33,7 @@ def run_growth_agent(db: Session) -> MerchantGrowthResponse:
         description=opp["description"],
         impact_estimate=opp["impact_estimate"],
         recommended_action=opp["recommended_action"],
+        analysis_tree=opp.get("analysis_tree"),
         campaign_payload=opp["campaign_payload"]
     ) for opp in opps_res]
 

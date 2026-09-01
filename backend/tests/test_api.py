@@ -57,6 +57,24 @@ def test_customer_memory_persistence():
     assert data2["memory_profile"] is not None
     assert "Sony" in data2["memory_profile"]["preferred_brands"]
 
+def test_agent_cart_recovery_flow():
+    # 1. Fetch merchant growth insights
+    res1 = client.get("/api/v1/agents/merchant/growth")
+    assert res1.status_code == 200
+    data1 = res1.json()
+    recovery_insight = next((item for item in data1["insights"] if "Cart Recovery" in item["title"]), None)
+    assert recovery_insight is not None
+    assert recovery_insight["analysis_tree"] is not None
+    assert "High" in recovery_insight["analysis_tree"]["product_demand"]
+    assert "RECOVER5" in recovery_insight["campaign_payload"]["coupon_code"]
+
+    # 2. Activate recovery campaign
+    payload = recovery_insight["campaign_payload"]
+    res2 = client.post("/api/v1/agents/merchant/campaign", json=payload)
+    assert res2.status_code == 200
+    data2 = res2.json()
+    assert data2["status"] in ["success", "activated"]
+
 def test_merchant_growth_agent():
     response = client.get("/api/v1/agents/merchant/growth")
     assert response.status_code == 200

@@ -63,6 +63,7 @@ class MerchantGrowthInsight(BaseModel):
     description: str
     impact_estimate: str
     recommended_action: str
+    analysis_tree: Optional[Dict[str, Any]] = None
     campaign_payload: Dict[str, Any]
 
 class MerchantGrowthResponse(BaseModel):
