@@ -14,21 +14,90 @@ from app.config import settings
 
 def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatResponse:
     user_msg = request.message.strip()
+    msg_lower = user_msg.lower()
     user_id = request.user_id
     tool_traces: List[ToolTrace] = []
-    workflow_steps: List[WorkflowStep] = []
 
     # Extract & update Customer Memory Profile in real-time
     memory_dict = extract_and_update_customer_memory(db, user_id=user_id, message=user_msg)
     memory_profile = CustomerMemoryProfile(**memory_dict)
 
+    # -------------------------------------------------------------------
+    # INTENT ROUTER 1: Check Stock Inventory Query
+    # -------------------------------------------------------------------
+    if "check stock" in msg_lower or "inventory" in msg_lower or msg_lower == "check stock inventory":
+        t_inv = time.time()
+        inv_res = check_inventory_tool(db, product_id="prod_001")
+        tool_traces.append(ToolTrace(
+            tool_name="check_inventory",
+            input_args={"product_id": "prod_001"},
+            output_summary=inv_res,
+            execution_time_ms=int((time.time() - t_inv) * 1000)
+        ))
+        p_details = get_product_details(db, "prod_001")
+        prod_resp = ProductResponse(**p_details) if p_details else None
+
+        return AgentChatResponse(
+            reply=f"📦 **Real-Time Stock Inventory Report**\n\n• **Product**: {inv_res['product_title']} (`prod_001`)\n• **Stock Quantity**: **{inv_res['stock_quantity']} units in stock**\n• **Availability Status**: {inv_res['status']}\n• **Fulfillment Center**: Main Bengaluru Warehouse",
+            recommended_product=prod_resp,
+            tool_traces=tool_traces,
+            workflow_steps=[],
+            requires_user_approval=False,
+            memory_profile=memory_profile,
+            suggested_actions=["Buy SoundMax Pro Headphones", "View Spec Comparison"]
+        )
+
+    # -------------------------------------------------------------------
+    # INTENT ROUTER 2: View Spec Comparison Query
+    # -------------------------------------------------------------------
+    if "view spec" in msg_lower or "comparison" in msg_lower or "compare candidates" in msg_lower:
+        t_comp = time.time()
+        comp_ids = ["prod_001", "prod_002", "prod_003"]
+        comp_res = compare_products(db, product_ids=comp_ids)
+        tool_traces.append(ToolTrace(
+            tool_name="compare_products",
+            input_args={"product_ids": comp_ids},
+            output_summary=comp_res,
+            execution_time_ms=int((time.time() - t_comp) * 1000)
+        ))
+        return AgentChatResponse(
+            reply="📊 **Side-by-Side Candidate Spec Comparison**\n\nI evaluated top candidate models across battery life, call quality, active noise cancellation, and price fit:",
+            comparison_table=comp_res["comparison_table"],
+            tool_traces=tool_traces,
+            workflow_steps=[],
+            requires_user_approval=False,
+            memory_profile=memory_profile,
+            suggested_actions=["Buy Top Pick (SoundMax Pro)", "Check Stock Inventory"]
+        )
+
+    # -------------------------------------------------------------------
+    # INTENT ROUTER 3: Memory / Preference Statement Only (Without Purchase Intent)
+    # -------------------------------------------------------------------
+    is_explicit_purchase = any(kw in msg_lower for kw in ["buy", "purchase", "checkout", "add to cart", "get it", "order", "online classes", "for travel", "headphones under"])
+    if not is_explicit_purchase and any(kw in msg_lower for kw in ["prefer", "don't like", "dislike", "avoid", "hate", "love"]):
+        brands_fmt = ", ".join(memory_profile.preferred_brands) if memory_profile.preferred_brands else "Sony"
+        avoid_fmt = ", ".join(memory_profile.avoid_traits) if memory_profile.avoid_traits else "Bulky (>220g)"
+        return AgentChatResponse(
+            reply=f"🧠 **Customer Preference Memory Updated!**\n\nI updated your persistent memory profile:\n• **Preferred Brands**: `{brands_fmt}`\n• **Avoid Traits**: `{avoid_fmt}`\n• **Summary**: *\"{memory_profile.memory_summary}\"*\n\nWhenever you search for products, I will automatically prioritize {brands_fmt} lightweight designs for you.",
+            memory_profile=memory_profile,
+            tool_traces=[],
+            workflow_steps=[],
+            requires_user_approval=False,
+            suggested_actions=["Find headphones for travel", "Buy best Sony headphones"]
+        )
+
+    # -------------------------------------------------------------------
+    # INTENT ROUTER 4: Full 11-Step Purchase Agent Workflow
+    # -------------------------------------------------------------------
+    workflow_steps: List[WorkflowStep] = []
+
     # STEP 1: Understand Request
     t1 = time.time()
     extracted_category = "Audio"
     max_budget = memory_profile.budget_ceiling or 5000.0
-    if "watch" in user_msg.lower():
+    if "watch" in msg_lower:
         extracted_category = "Wearables"
-    elif "mouse" in user_msg.lower() or "keyboard" in user_msg.lower():
+    elif "mouse" in msg_lower or "keyboard" in msg_lower:
         extracted_category = "Accessories"
 
     brands_str = ", ".join(memory_profile.preferred_brands) if memory_profile.preferred_brands else "None"
@@ -249,5 +318,5 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
         final_amount=price_res["final_amount"],
         negotiated_offer=negotiated_offer_data,
         memory_profile=memory_profile,
-        suggested_actions=[f"Approve & Pay ₹{price_res['final_amount']:,.0f} via Razorpay", "View Spec Comparison", "Check Stock Inventory"]
+        suggested_actions=["View Spec Comparison", "Check Stock Inventory"]
     )

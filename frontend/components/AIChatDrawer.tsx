@@ -177,6 +177,32 @@ export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout }: AI
               />
             )}
 
+            {/* Comparison Table View if returned */}
+            {msg.comparisonTable && (
+              <div className="mt-3 p-3 bg-slate-900/90 border border-slate-800 rounded-2xl w-full max-w-[92%] overflow-x-auto">
+                <table className="w-full text-xs text-slate-300 font-mono">
+                  <thead>
+                    <tr className="border-b border-slate-700 text-cyan-400 text-[11px] uppercase">
+                      <th className="py-1.5 px-2 text-left">Model</th>
+                      <th className="py-1.5 px-2 text-center">Price</th>
+                      <th className="py-1.5 px-2 text-center">Rating</th>
+                      <th className="py-1.5 px-2 text-center">Mic</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(msg.comparisonTable).map(([itemKey, itemData]: [string, any], idx) => (
+                      <tr key={idx} className="border-b border-slate-800/50">
+                        <td className="py-2 px-2 text-white font-bold">{itemData.title || itemKey}</td>
+                        <td className="py-2 px-2 text-center text-cyan-300">₹{itemData.price?.toLocaleString()}</td>
+                        <td className="py-2 px-2 text-center text-amber-400">{itemData.rating}★</td>
+                        <td className="py-2 px-2 text-center text-emerald-400">{itemData.mic || "Clear HD"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
             {/* Recommended Product Card */}
             {msg.recommendedProduct && (
               <div className="mt-3 p-3 bg-slate-900/90 border border-indigo-500/40 rounded-2xl w-full max-w-[92%] shadow-lg">
@@ -233,16 +259,19 @@ export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout }: AI
             {/* Suggested Action Pills */}
             {msg.suggestedActions && (
               <div className="mt-2.5 flex flex-wrap gap-1.5 max-w-[92%]">
-                {msg.suggestedActions.map((action, i) => (
-                  <button
-                    key={i}
-                    onClick={() => handleSend(action)}
-                    className="text-xs bg-slate-800/80 hover:bg-indigo-600/30 text-indigo-300 hover:text-white border border-indigo-500/30 px-3 py-1 rounded-full transition-all flex items-center gap-1"
-                  >
-                    <span>{action}</span>
-                    <ArrowRight className="w-3 h-3" />
-                  </button>
-                ))}
+                {msg.suggestedActions.map((action, i) => {
+                  const isApproveAction = action.toLowerCase().includes("approve") || action.toLowerCase().includes("pay");
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => isApproveAction ? onInitiateCheckout(msg.recommendedProduct?.id || "prod_001") : handleSend(action)}
+                      className="text-xs bg-slate-800/80 hover:bg-indigo-600/30 text-indigo-300 hover:text-white border border-indigo-500/30 px-3 py-1 rounded-full transition-all flex items-center gap-1"
+                    >
+                      <span>{action}</span>
+                      <ArrowRight className="w-3 h-3" />
+                    </button>
+                  );
+                })}
               </div>
             )}
 
@@ -252,7 +281,7 @@ export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout }: AI
         {loading && (
           <div className="flex items-center gap-2 text-slate-400 text-xs bg-slate-800/50 p-3 rounded-2xl border border-slate-700/50 w-fit">
             <Cpu className="w-4 h-4 text-cyan-400 animate-spin" />
-            <span>Autonomous Agent recalling memory & executing workflow...</span>
+            <span>Autonomous Agent recalling memory & processing request...</span>
           </div>
         )}
 
@@ -272,7 +301,7 @@ export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout }: AI
             type="text"
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
-            placeholder="Try: 'I prefer Sony and dislike bulky headphones.'"
+            placeholder="Try: 'Check Stock Inventory' or 'View Spec Comparison'"
             className="flex-1 bg-slate-800 border border-slate-700 text-white text-sm rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-indigo-500 placeholder-slate-500"
           />
           <button
