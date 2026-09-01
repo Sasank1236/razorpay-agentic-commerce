@@ -2,7 +2,10 @@ import time
 import json
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
-from app.tools.product_tools import search_products, get_product_details, compare_products, get_recommendations_tool
+from app.tools.product_tools import (
+    search_products, get_product_details, compare_products,
+    get_recommendations_tool, extract_intent_from_query
+)
 from app.tools.cart_tools import (
     add_to_cart_tool, create_staged_order_tool, check_inventory_tool,
     apply_coupon_tool, calculate_final_price_tool
@@ -27,22 +30,27 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
     # -------------------------------------------------------------------
     if "check stock" in msg_lower or "inventory" in msg_lower or msg_lower == "check stock inventory":
         t_inv = time.time()
-        inv_res = check_inventory_tool(db, product_id="prod_001")
+        # Find best matching product to check inventory for
+        rec_info = get_recommendations_tool(db, query=user_msg, user_id=user_id)
+        target_prod = rec_info["recommended_product"]
+        target_id = target_prod["id"]
+
+        inv_res = check_inventory_tool(db, product_id=target_id)
         tool_traces.append(ToolTrace(
             tool_name="check_inventory",
-            input_args={"product_id": "prod_001"},
+            input_args={"product_id": target_id},
             output_summary=inv_res,
             execution_time_ms=int((time.time() - t_inv) * 1000)
         ))
-        p_details = get_product_details(db, "prod_001")
+        p_details = get_product_details(db, target_id)
         prod_resp = ProductResponse(**p_details) if p_details else None
 
         clean_report = (
             "📦 **Real-Time Stock Inventory Report**\n\n"
-            f"• **Product**: {inv_res['product_title']} (`prod_001`)\n"
+            f"• **Product**: {inv_res['product_title']} (`{target_id}`)\n"
             f"• **Available Stock**: **{inv_res['stock_quantity']} units in stock**\n"
             f"• **Inventory Status**: {inv_res['status']} & Ready for Immediate Dispatch\n"
-            "• **Fulfillment Location**: Main Bengaluru Commerce Center"
+            "• **Fulfillment Location**: Main Bengaluru Commerce Hub"
         )
 
         return AgentChatResponse(
@@ -52,7 +60,7 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
             workflow_steps=[],
             requires_user_approval=False,
             memory_profile=memory_profile,
-            suggested_actions=["Buy SoundMax Pro Headphones", "View Spec Comparison"]
+            suggested_actions=[f"Buy {target_prod['title']}", "View Spec Comparison"]
         )
 
     # -------------------------------------------------------------------
@@ -60,7 +68,10 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
     # -------------------------------------------------------------------
     if "view spec" in msg_lower or "comparison" in msg_lower or "compare candidates" in msg_lower:
         t_comp = time.time()
-        comp_ids = ["prod_001", "prod_002", "prod_003"]
+        rec_info = get_recommendations_tool(db, query=user_msg, user_id=user_id)
+        shortlisted = rec_info.get("shortlisted", [])
+        comp_ids = [p["id"] for p in shortlisted[:3]] if shortlisted else ["prod_001", "prod_002", "prod_003"]
+        
         comp_res = compare_products(db, product_ids=comp_ids)
         tool_traces.append(ToolTrace(
             tool_name="compare_products",
@@ -69,19 +80,19 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
             execution_time_ms=int((time.time() - t_comp) * 1000)
         ))
         return AgentChatResponse(
-            reply="📊 **Side-by-Side Candidate Spec Comparison**\n\nI evaluated top candidate models across battery life, call quality, active noise cancellation, and price fit:",
+            reply="📊 **Side-by-Side Candidate Spec Comparison**\n\nI evaluated candidate models across key specifications, pricing, rating, and performance fit:",
             comparison_table=comp_res["comparison_table"],
             tool_traces=tool_traces,
             workflow_steps=[],
             requires_user_approval=False,
             memory_profile=memory_profile,
-            suggested_actions=["Buy Top Pick (SoundMax Pro)", "Check Stock Inventory"]
+            suggested_actions=[f"Buy Top Pick ({rec_info['recommended_product']['title']})", "Check Stock Inventory"]
         )
 
     # -------------------------------------------------------------------
     # INTENT ROUTER 3: Memory / Preference Statement Only (Without Purchase Intent)
     # -------------------------------------------------------------------
-    is_explicit_purchase = any(kw in msg_lower for kw in ["buy", "purchase", "checkout", "add to cart", "get it", "order", "online classes", "for travel", "headphones under"])
+    is_explicit_purchase = any(kw in msg_lower for kw in ["buy", "purchase", "checkout", "add to cart", "get it", "order", "laptop", "headphones under", "best"])
     if not is_explicit_purchase and any(kw in msg_lower for kw in ["prefer", "don't like", "dislike", "avoid", "hate", "love"]):
         brands_fmt = ", ".join(memory_profile.preferred_brands) if memory_profile.preferred_brands else "Sony"
         avoid_fmt = ", ".join(memory_profile.avoid_traits) if memory_profile.avoid_traits else "Bulky (>220g)"
@@ -91,7 +102,7 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
             tool_traces=[],
             workflow_steps=[],
             requires_user_approval=False,
-            suggested_actions=["Find headphones for travel", "Buy best Sony headphones"]
+            suggested_actions=["Find headphones for travel", "Find best laptops under 60k"]
         )
 
     # -------------------------------------------------------------------
@@ -101,12 +112,9 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
 
     # STEP 1: Understand Request
     t1 = time.time()
-    extracted_category = "Audio"
-    max_budget = memory_profile.budget_ceiling or 5000.0
-    if "watch" in msg_lower:
-        extracted_category = "Wearables"
-    elif "mouse" in msg_lower or "keyboard" in msg_lower:
-        extracted_category = "Accessories"
+    parsed_intent = extract_intent_from_query(user_msg)
+    extracted_category = parsed_intent["category"]
+    max_budget = parsed_intent["max_price"]
 
     brands_str = ", ".join(memory_profile.preferred_brands) if memory_profile.preferred_brands else "None"
     avoid_str = ", ".join(memory_profile.avoid_traits) if memory_profile.avoid_traits else "None"
@@ -132,18 +140,18 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
         step_number=2,
         step_name="Search Products",
         status="completed",
-        detail_message=f"Searched product catalog and shortlisted {len(search_res)} matching candidates.",
+        detail_message=f"Searched product catalog for '{extracted_category}' and shortlisted {len(search_res)} matching candidates.",
         execution_time_ms=int((time.time() - t2) * 1000)
     ))
 
     # STEP 3: Filter Budget
     t3 = time.time()
-    budget_filtered = [p for p in search_res if p["price"] <= max_budget]
+    budget_filtered = [p for p in search_res if p["price"] <= max_budget] if search_res else []
     workflow_steps.append(WorkflowStep(
         step_number=3,
         step_name="Filter Budget",
         status="completed",
-        detail_message=f"Filtered products under budget ceiling of ₹{max_budget:,.0f} ({len(budget_filtered)} candidate items).",
+        detail_message=f"Filtered candidates under budget ceiling of ₹{max_budget:,.0f} ({len(budget_filtered)} matching items).",
         execution_time_ms=int((time.time() - t3) * 1000)
     ))
 
@@ -153,13 +161,13 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
         step_number=4,
         step_name="Evaluate Specifications",
         status="completed",
-        detail_message=f"Evaluated microphone specs, call clarity, and penalized {avoid_str} designs based on customer memory.",
+        detail_message=f"Evaluated performance specs, RAM/CPU/Display for {extracted_category}, and factored customer memory.",
         execution_time_ms=int((time.time() - t4) * 1000)
     ))
 
     # STEP 5: Compare Candidates
     t5 = time.time()
-    comp_ids = ["prod_001", "prod_002", "prod_003"]
+    comp_ids = [p["id"] for p in search_res[:3]] if search_res else ["prod_001", "prod_002", "prod_003"]
     comp_res = compare_products(db, product_ids=comp_ids)
     tool_traces.append(ToolTrace(
         tool_name="compare_products",
@@ -167,11 +175,12 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
         output_summary=comp_res,
         execution_time_ms=int((time.time() - t5) * 1000)
     ))
+    candidate_names = ", ".join([p["title"] for p in search_res[:3]]) if search_res else "top candidate models"
     workflow_steps.append(WorkflowStep(
         step_number=5,
         step_name="Compare Candidates",
         status="completed",
-        detail_message="Compared specs across top candidate models: SoundMax Pro, AudioPhonic H50, and SonicPod ANC.",
+        detail_message=f"Compared specs across candidate models: {candidate_names}.",
         execution_time_ms=int((time.time() - t5) * 1000)
     ))
 

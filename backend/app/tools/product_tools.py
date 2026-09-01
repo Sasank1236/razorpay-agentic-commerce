@@ -1,6 +1,7 @@
 import time
 import uuid
 import json
+import re
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from app.models import Product, Inventory, User, AgentAction, SearchEvent
@@ -19,6 +20,56 @@ def log_agent_action(db: Session, agent_type: str, action_name: str, input_param
     )
     db.add(action)
     db.commit()
+
+def extract_intent_from_query(query: str, memory_ceiling: float = 5000.0) -> Dict[str, Any]:
+    q_lower = query.lower()
+
+    # 1. Extract Category
+    category = "Audio"
+    if any(w in q_lower for w in ["laptop", "macbook", "notebook", "ultrabook", "pc", "computer"]):
+        category = "Laptops"
+    elif any(w in q_lower for w in ["watch", "fitness", "band", "smartwatch", "amoled watch"]):
+        category = "Wearables"
+    elif any(w in q_lower for w in ["mouse", "keyboard", "ssd", "powerbank", "charger", "cooling pad", "hub", "mic"]):
+        category = "Accessories"
+    elif any(w in q_lower for w in ["alexa", "echo", "nest", "bulb", "plug", "camera", "security"]):
+        category = "Smart Home"
+    elif any(w in q_lower for w in ["phone", "mobile", "smartphone", "iphone", "galaxy"]):
+        category = "Smartphones"
+    elif any(w in q_lower for w in ["headphone", "earbud", "earphone", "audio", "speaker", "sound", "anc"]):
+        category = "Audio"
+
+    # 2. Extract Max Price
+    max_price = 50000.0 if category == "Laptops" else 10000.0
+    if category == "Laptops":
+        if "budget" in q_lower or "low" in q_lower or "cheap" in q_lower or "under 60" in q_lower or "under 60000" in q_lower:
+            max_price = 60000.0
+        else:
+            max_price = 150000.0
+    elif category == "Audio":
+        if "under 5000" in q_lower or "under 5k" in q_lower or "< 5000" in q_lower or "< 5k" in q_lower or "5,000" in q_lower:
+            max_price = 5000.0
+        elif "travel" in q_lower or "premium" in q_lower or "flagship" in q_lower:
+            max_price = 35000.0
+
+    # Parse explicit numeric budget like "under 15000" or "under 15k"
+    num_match = re.search(r'(?:under|below|less than|<|budget of|rs\.?|₹)?\s*(\d+)\s*(k|000)?', q_lower)
+    if num_match:
+        try:
+            val = float(num_match.group(1))
+            unit = num_match.group(2)
+            if unit == 'k' or val < 500:
+                val *= 1000.0
+            if val >= 1000:
+                max_price = val
+        except Exception:
+            pass
+
+    return {
+        "category": category,
+        "max_price": max_price,
+        "priorities": ["calls", "battery", "performance", "display", "mic"]
+    }
 
 def search_products(db: Session, query: str, category: Optional[str] = None, max_price: Optional[float] = None) -> List[Dict[str, Any]]:
     start_time = time.time()
@@ -93,9 +144,9 @@ def compare_products(db: Session, product_ids: List[str]) -> Dict[str, Any]:
             "id": p.id,
             "price": f"₹{p.price:,.0f}",
             "rating": f"{p.rating}★",
-            "battery": (p.specs or {}).get("battery", "Standard"),
-            "mic": (p.specs or {}).get("mic", "Good"),
-            "anc": "Yes" if (p.specs or {}).get("anc") else "No",
+            "battery": (p.specs or {}).get("battery", (p.specs or {}).get("cpu", "Standard")),
+            "mic": (p.specs or {}).get("mic", (p.specs or {}).get("ram", "Good")),
+            "anc": "Yes" if (p.specs or {}).get("anc") else "Standard",
             "brand": p.brand
         }
 
@@ -111,24 +162,8 @@ def compare_products(db: Session, product_ids: List[str]) -> Dict[str, Any]:
 def get_recommendations_tool(db: Session, query: str, user_id: str = "user_customer_01") -> Dict[str, Any]:
     start_time = time.time()
     
-    max_price = 5000.0
-    if "< 5000" in query or "under 5000" in query or "under 5k" in query or "below 5000" in query or "under 5000 rs" in query:
-        max_price = 5000.0
-    elif "under 10000" in query or "under 10k" in query:
-        max_price = 10000.0
-    elif "travel" in query.lower():
-        max_price = 30000.0 # Allow flagship travel headphones if query requests travel
-
-    category = "Audio"
-    if "watch" in query.lower() or "fitness" in query.lower():
-        category = "Wearables"
-    elif "mouse" in query.lower() or "keyboard" in query.lower():
-        category = "Accessories"
-    elif "laptop" in query.lower() or "macbook" in query.lower():
-        category = "Laptops"
-
+    intent = extract_intent_from_query(query)
     user_preferences = get_customer_memory_profile(db, user_id)
-    intent = {"category": category, "max_price": max_price, "priorities": ["calls", "battery", "mic"]}
     
     best_p, top_candidates, scores, reasoning = get_hybrid_recommendations(db, query, intent, user_preferences, limit=4)
     
