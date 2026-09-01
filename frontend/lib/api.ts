@@ -89,6 +89,7 @@ export interface MerchantGrowthInsight {
   description: string;
   impact_estimate: string;
   recommended_action: string;
+  analysis_tree?: Record<string, string>;
   campaign_payload: Record<string, any>;
 }
 

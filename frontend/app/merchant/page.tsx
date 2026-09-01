@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Navbar from '@/components/Navbar';
 import GrowthInsightsCard from '@/components/GrowthInsightsCard';
+import CartRecoveryCard from '@/components/CartRecoveryCard';
 import { fetchMerchantGrowth, fetchRevenueTrends, MerchantGrowthResponse } from '@/lib/api';
 import { TrendingUp, ShoppingBag, DollarSign, Users, AlertOctagon, Sparkles, Zap, ShieldCheck } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
@@ -180,13 +181,24 @@ export default function MerchantPage() {
               </div>
             ) : (
               <div className="space-y-4">
-                {data?.insights.map((insight, idx) => (
-                  <GrowthInsightsCard
-                    key={idx}
-                    insight={insight}
-                    onCampaignExecuted={loadMerchantData}
-                  />
-                ))}
+                {data?.insights.map((insight, idx) => {
+                  if (insight.title.includes("Cart Recovery")) {
+                    return (
+                      <CartRecoveryCard
+                        key={idx}
+                        insight={insight}
+                        onCampaignActivated={loadMerchantData}
+                      />
+                    );
+                  }
+                  return (
+                    <GrowthInsightsCard
+                      key={idx}
+                      insight={insight}
+                      onCampaignExecuted={loadMerchantData}
+                    />
+                  );
+                })}
               </div>
             )}
           </div>
