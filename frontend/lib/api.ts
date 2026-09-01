@@ -93,6 +93,20 @@ export interface MerchantGrowthInsight {
   campaign_payload: Record<string, any>;
 }
 
+export interface CampaignFeedbackLoop {
+  campaign_id: string;
+  title: string;
+  pre_conversion_rate: number;
+  post_conversion_rate: number;
+  conversion_lift_percent: number;
+  revenue_generated: number;
+  margin_impact: string;
+  current_discount_percent: number;
+  recommended_discount_percent: number;
+  ai_conclusion: str;
+  recommended_adjustment: str;
+}
+
 export interface MerchantGrowthResponse {
   insights: MerchantGrowthInsight[];
   metrics_summary: {
@@ -104,6 +118,7 @@ export interface MerchantGrowthResponse {
     abandoned_carts_count: number;
     abandoned_revenue_at_risk: number;
   };
+  campaign_feedback_loops?: CampaignFeedbackLoop[];
   tool_traces: ToolTrace[];
 }
 

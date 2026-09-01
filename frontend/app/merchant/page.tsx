@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Navbar from '@/components/Navbar';
 import GrowthInsightsCard from '@/components/GrowthInsightsCard';
 import CartRecoveryCard from '@/components/CartRecoveryCard';
+import ClosedLoopCampaignCard from '@/components/ClosedLoopCampaignCard';
 import { fetchMerchantGrowth, fetchRevenueTrends, MerchantGrowthResponse } from '@/lib/api';
 import { TrendingUp, ShoppingBag, DollarSign, Users, AlertOctagon, Sparkles, Zap, ShieldCheck } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
@@ -44,7 +45,7 @@ export default function MerchantPage() {
             </span>
             <h1 className="text-3xl font-extrabold text-white">Commerce Analytics & AI Growth Agent</h1>
             <p className="text-slate-400 text-xs sm:text-sm mt-1">
-              Autonomous AI agent analyzing shopper search intent, conversion bottlenecks, and abandoned cart recovery.
+              Autonomous AI agent analyzing shopper search intent, conversion bottlenecks, abandoned cart recovery, and closed-loop campaign learning.
             </p>
           </div>
 
@@ -112,6 +113,24 @@ export default function MerchantPage() {
               </div>
             </div>
 
+          </div>
+        )}
+
+        {/* Closed-Loop Campaign Performance Learning Section */}
+        {data?.campaign_feedback_loops && data.campaign_feedback_loops.length > 0 && (
+          <div className="space-y-4">
+            <h2 className="text-lg font-extrabold text-white flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-indigo-400" /> Closed-Loop Campaign Performance & AI Strategy Tuning
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {data.campaign_feedback_loops.map((feedback, idx) => (
+                <ClosedLoopCampaignCard
+                  key={idx}
+                  feedback={feedback}
+                  onOptimized={loadMerchantData}
+                />
+              ))}
+            </div>
           </div>
         )}
 
