@@ -75,6 +75,30 @@ def test_agent_cart_recovery_flow():
     data2 = res2.json()
     assert data2["status"] in ["success", "activated"]
 
+def test_closed_loop_campaign_feedback():
+    # 1. Fetch merchant growth insights & feedback loops
+    res1 = client.get("/api/v1/agents/merchant/growth")
+    assert res1.status_code == 200
+    data1 = res1.json()
+    assert "campaign_feedback_loops" in data1
+    assert len(data1["campaign_feedback_loops"]) >= 1
+    feedback = data1["campaign_feedback_loops"][0]
+    assert feedback["pre_conversion_rate"] == 9.2
+    assert feedback["post_conversion_rate"] == 12.8
+    assert feedback["conversion_lift_percent"] == 39.1
+    assert feedback["revenue_generated"] == 18450.0
+    assert "Optimize discount" in feedback["recommended_adjustment"]
+
+    # 2. Execute optimization campaign (5% -> 3%)
+    opt_payload = {
+        "action_type": "optimize_discount",
+        "campaign_id": feedback["campaign_id"],
+        "discount_percent": 3.0
+    }
+    res2 = client.post("/api/v1/agents/merchant/campaign", json=opt_payload)
+    assert res2.status_code == 200
+    assert res2.json()["status"] == "success"
+
 def test_merchant_growth_agent():
     response = client.get("/api/v1/agents/merchant/growth")
     assert response.status_code == 200

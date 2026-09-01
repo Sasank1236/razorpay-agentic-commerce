@@ -66,7 +66,21 @@ class MerchantGrowthInsight(BaseModel):
     analysis_tree: Optional[Dict[str, Any]] = None
     campaign_payload: Dict[str, Any]
 
+class CampaignFeedbackLoop(BaseModel):
+    campaign_id: str
+    title: str
+    pre_conversion_rate: float
+    post_conversion_rate: float
+    conversion_lift_percent: float
+    revenue_generated: float
+    margin_impact: str
+    current_discount_percent: float
+    recommended_discount_percent: float
+    ai_conclusion: str
+    recommended_adjustment: str
+
 class MerchantGrowthResponse(BaseModel):
     insights: List[MerchantGrowthInsight]
     metrics_summary: Dict[str, Any]
+    campaign_feedback_loops: List[CampaignFeedbackLoop] = []
     tool_traces: List[ToolTrace] = []
