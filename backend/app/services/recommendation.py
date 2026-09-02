@@ -1,7 +1,7 @@
 import json
 from typing import List, Dict, Any, Tuple
 from sqlalchemy.orm import Session
-from app.models import Product, SearchEvent
+from app.models import Product, Inventory, SearchEvent
 from app.schemas.product import ProductResponse
 from app.config import settings
 
@@ -99,16 +99,36 @@ def get_hybrid_recommendations(
     limit: int = 5
 ) -> Tuple[Product, List[Product], List[Dict[str, Any]], str]:
     """
-    Queries candidate products from DB, scores them using Customer Memory, and generates structured reasoning.
+    Queries candidate products from DB, strictly filtering category, stock > 0, and budget ceiling,
+    then scores them using Customer Memory and generates structured reasoning.
     """
     user_preferences = user_preferences or {}
     category = extracted_intent.get("category", "Audio")
     max_price = extracted_intent.get("max_price", 5000)
 
-    # Query candidate products
-    candidates = db.query(Product).filter(
-        Product.price <= max_price * 1.25
-    ).all()
+    # Base query: Join Inventory to enforce stock_quantity > 0
+    query_builder = db.query(Product).join(Inventory, Product.id == Inventory.product_id).filter(
+        Inventory.stock_quantity > 0
+    )
+
+    candidates = []
+    if category:
+        # Strictly filter by category and price ceiling
+        category_candidates = query_builder.filter(
+            Product.category.ilike(f"%{category}%"),
+            Product.price <= max_price * 1.25
+        ).all()
+        
+        if not category_candidates:
+            # Fallback: get items in the requested category even if above max_price
+            category_candidates = query_builder.filter(
+                Product.category.ilike(f"%{category}%")
+            ).all()
+
+        candidates = category_candidates
+
+    if not candidates:
+        candidates = query_builder.filter(Product.price <= max_price * 1.25).all()
 
     if not candidates:
         candidates = db.query(Product).limit(10).all()
@@ -127,13 +147,13 @@ def get_hybrid_recommendations(
 
     preferred_brands = user_preferences.get("preferred_brands", [])
     memory_preamble = ""
-    if preferred_brands:
+    if preferred_brands and any(b.lower() in best_product.brand.lower() for b in preferred_brands):
         memory_preamble = f"Based on your stored preference for **{', '.join(preferred_brands)}** and lightweight non-bulky designs, "
 
     reasoning = (
-        f"{memory_preamble}we evaluated {len(candidates)} candidate products across battery life, call clarity, rating, and ergonomic weight. "
+        f"{memory_preamble}we evaluated {len(candidates)} candidate products in the {category} category. "
         f"**{best_product.title}** scored the highest ({score_details[0]['total_score']}/100) because it fits your budget at ₹{best_product.price:,.0f}, "
-        f"features a {best_product.rating}★ rating, and perfectly aligns with your brand loyalty and use-case priorities."
+        f"features a {best_product.rating}★ rating, and perfectly aligns with your use-case priorities."
     )
 
     return best_product, top_candidates, score_details, reasoning

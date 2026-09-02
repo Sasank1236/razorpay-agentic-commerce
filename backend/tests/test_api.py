@@ -28,6 +28,18 @@ def test_category_intent_extraction_no_substring_bug():
     intent4 = extract_intent_from_query("best low budget laptops")
     assert intent4["category"] == "Laptops"
 
+def test_recommendation_restricts_category():
+    payload = {
+        "user_id": "user_customer_01",
+        "message": "Find laptops under ₹60,000"
+    }
+    response = client.post("/api/v1/agents/customer/chat", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["recommended_product"] is not None
+    assert data["recommended_product"]["category"] == "Laptops"
+    assert data["recommended_product"]["price"] <= 60000.0
+
 def test_products_endpoint():
     response = client.get("/api/v1/products")
     assert response.status_code == 200
