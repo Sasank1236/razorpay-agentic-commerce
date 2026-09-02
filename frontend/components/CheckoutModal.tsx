@@ -29,35 +29,106 @@ export default function CheckoutModal({
 
   if (!isOpen) return null;
 
-  const handleRazorpayTestPayment = async () => {
+  const loadRazorpayScript = (): Promise<boolean> => {
+    return new Promise((resolve) => {
+      if (typeof window !== 'undefined' && (window as any).Razorpay) {
+        resolve(true);
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
+
+  const handleRazorpayStandardCheckout = async () => {
     setLoading(true);
     setErrorMsg('');
 
     try {
-      // 1. Server-side Razorpay Order creation (Safety: Backend calculates trusted amount)
+      // 1. Backend Order Creation (Safety: Amount calculated server-side in paise)
       const razorpayOrder = await createRazorpayOrderApi(orderId);
+      const razorpayKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || razorpayOrder.key_id || "rzp_test_TXCnSzbrn3Uadx";
 
-      // 2. Simulate Razorpay Test Checkout Signature Callback
-      const simulatedPaymentId = `pay_test_${Math.random().toString(36).substring(2, 10)}`;
-      const simulatedSignature = `sig_test_${Math.random().toString(36).substring(2, 12)}`;
+      // Load Razorpay Standard Checkout JS Script
+      const isLoaded = await loadRazorpayScript();
 
-      // 3. Server-side HMAC Signature Verification
-      const verifyRes = await verifyPaymentApi(
-        orderId,
-        razorpayOrder.razorpay_order_id,
-        simulatedPaymentId,
-        simulatedSignature
-      );
+      if (isLoaded && typeof window !== 'undefined' && (window as any).Razorpay) {
+        const options = {
+          key: razorpayKey,
+          amount: razorpayOrder.amount_in_paisa,
+          currency: razorpayOrder.currency || "INR",
+          name: "RazorBuy Agentic Commerce",
+          description: `Order #${orderId}`,
+          image: "https://razorpay.com/favicon.ico",
+          order_id: razorpayOrder.razorpay_order_id,
+          handler: async function (response: any) {
+            try {
+              // On payment success: Verify payment signature on backend
+              const verifyRes = await verifyPaymentApi(
+                orderId,
+                response.razorpay_order_id,
+                response.razorpay_payment_id,
+                response.razorpay_signature
+              );
 
-      if (verifyRes.success) {
-        setPaymentSuccess(true);
-        onPaymentSuccess();
+              if (verifyRes.success) {
+                setPaymentSuccess(true);
+                onPaymentSuccess();
+              } else {
+                setErrorMsg('Payment signature verification failed.');
+              }
+            } catch (err: any) {
+              setErrorMsg(err.message || 'Signature verification failed.');
+            } finally {
+              setLoading(false);
+            }
+          },
+          prefill: {
+            name: "Rahul Sharma",
+            email: "rahul.sharma@example.com",
+            contact: "9876543210"
+          },
+          theme: {
+            color: "#6366f1"
+          },
+          modal: {
+            ondismiss: function () {
+              setLoading(false);
+            }
+          }
+        };
+
+        const rzp = new (window as any).Razorpay(options);
+        rzp.on('payment.failed', function (response: any) {
+          setErrorMsg(response.error?.description || 'Payment failed in Razorpay Checkout.');
+          setLoading(false);
+        });
+        rzp.open();
       } else {
-        setErrorMsg('Payment verification failed.');
+        // Fallback for simulated test environment
+        const simulatedPaymentId = `pay_test_${Math.random().toString(36).substring(2, 10)}`;
+        const simulatedSignature = `sig_test_${Math.random().toString(36).substring(2, 12)}`;
+
+        const verifyRes = await verifyPaymentApi(
+          orderId,
+          razorpayOrder.razorpay_order_id,
+          simulatedPaymentId,
+          simulatedSignature
+        );
+
+        if (verifyRes.success) {
+          setPaymentSuccess(true);
+          onPaymentSuccess();
+        } else {
+          setErrorMsg('Payment verification failed.');
+        }
+        setLoading(false);
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Payment processing failed.');
-    } finally {
       setLoading(false);
     }
   };
@@ -73,9 +144,9 @@ export default function CheckoutModal({
               <CreditCard className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-bold text-white text-base">Razorpay Test Checkout</h3>
+              <h3 className="font-bold text-white text-base">Razorpay Standard Checkout</h3>
               <p className="text-xs text-slate-400 flex items-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Human Authorization Stage
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Human Authorization Guardrail
               </p>
             </div>
           </div>
@@ -133,7 +204,7 @@ export default function CheckoutModal({
               <div className="text-xs text-slate-400 bg-slate-900/50 p-3 rounded-xl border border-slate-800 flex items-start gap-2">
                 <Lock className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
                 <p>
-                  <strong>Server-Side Safety Enforced:</strong> Amount calculated from backend database total (`₹{amount}`). Server signature verification active via Razorpay HMAC SHA256 test mode.
+                  <strong>Razorpay Standard Web Checkout:</strong> Amount calculated server-side in paise. Uses HMAC-SHA256 signature verification.
                 </p>
               </div>
 
@@ -144,19 +215,19 @@ export default function CheckoutModal({
                 </div>
               )}
 
-              {/* Razorpay Test Pay Button */}
+              {/* Razorpay Standard Pay Button */}
               <button
-                onClick={handleRazorpayTestPayment}
+                onClick={handleRazorpayStandardCheckout}
                 disabled={loading}
                 className="w-full py-3.5 px-4 bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white font-extrabold text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-indigo-600/30 flex items-center justify-center gap-2 transition-all active:scale-98 disabled:opacity-50"
               >
                 {loading ? (
                   <>
-                    <Sparkles className="w-5 h-5 animate-spin" /> Verifying Payment Signature...
+                    <Sparkles className="w-5 h-5 animate-spin" /> Opening Razorpay Checkout...
                   </>
                 ) : (
                   <>
-                    <CreditCard className="w-5 h-5" /> Pay ₹{amount.toLocaleString()} in Test Mode
+                    <CreditCard className="w-5 h-5" /> Pay ₹{amount.toLocaleString()} via Razorpay
                   </>
                 )}
               </button>

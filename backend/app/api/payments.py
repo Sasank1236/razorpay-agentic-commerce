@@ -1,4 +1,7 @@
 import uuid
+import hmac
+import hashlib
+import time
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.db.database import get_db
@@ -7,7 +10,6 @@ from app.schemas.payment import CreateRazorpayOrderRequest, RazorpayOrderRespons
 from app.services.razorpay_service import razorpay_service
 from app.config import settings
 from app.tools.product_tools import log_agent_action
-import time
 
 router = APIRouter(prefix="/payments", tags=["Payments & Razorpay"])
 
@@ -18,14 +20,20 @@ def create_razorpay_order_endpoint(body: CreateRazorpayOrderRequest, db: Session
     if not order:
         raise HTTPException(status_code=404, detail="Internal order not found")
 
-    # Payment Safety: Calculate amount strictly from trusted backend database
+    # Payment Safety: Calculate amount strictly from trusted backend database (converted to paise)
     amount_in_paisa = int(round(order.total_amount * 100))
 
-    rp_order = razorpay_service.create_order(
-        internal_order_id=order.id,
-        amount_in_paisa=amount_in_paisa,
-        currency=order.currency
-    )
+    if amount_in_paisa < 100:
+        raise HTTPException(status_code=400, detail="Minimum payment amount is 100 paise (₹1.00)")
+
+    try:
+        rp_order = razorpay_service.create_order(
+            internal_order_id=order.id,
+            amount_in_paisa=amount_in_paisa,
+            currency=order.currency
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Razorpay order creation failed: {str(e)}")
 
     order.razorpay_order_id = rp_order["id"]
     db.commit()
@@ -61,6 +69,9 @@ def verify_payment_endpoint(body: VerifyPaymentRequest, db: Session = Depends(ge
     order = db.query(Order).filter(Order.id == body.order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+
+    if not body.razorpay_order_id or not body.razorpay_payment_id or not body.razorpay_signature:
+        raise HTTPException(status_code=400, detail="Missing required payment verification parameters")
 
     is_valid = razorpay_service.verify_payment_signature(
         razorpay_order_id=body.razorpay_order_id,
