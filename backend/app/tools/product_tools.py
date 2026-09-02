@@ -24,20 +24,21 @@ def log_agent_action(db: Session, agent_type: str, action_name: str, input_param
 def extract_intent_from_query(query: str, memory_ceiling: float = 5000.0) -> Dict[str, Any]:
     q_lower = query.lower()
 
-    # 1. Extract Category
+    # 1. Extract Category using regex word boundaries to prevent substring collisions (e.g. 'phone' inside 'headphones')
     category = "Audio"
-    if any(w in q_lower for w in ["laptop", "macbook", "notebook", "ultrabook", "pc", "computer"]):
-        category = "Laptops"
-    elif any(w in q_lower for w in ["watch", "fitness", "band", "smartwatch", "amoled watch"]):
-        category = "Wearables"
-    elif any(w in q_lower for w in ["mouse", "keyboard", "ssd", "powerbank", "charger", "cooling pad", "hub", "mic"]):
-        category = "Accessories"
-    elif any(w in q_lower for w in ["alexa", "echo", "nest", "bulb", "plug", "camera", "security"]):
-        category = "Smart Home"
-    elif any(w in q_lower for w in ["phone", "mobile", "smartphone", "iphone", "galaxy"]):
-        category = "Smartphones"
-    elif any(w in q_lower for w in ["headphone", "earbud", "earphone", "audio", "speaker", "sound", "anc"]):
+
+    if re.search(r'\b(headphone|headphones|earbud|earbuds|earphone|earphones|audio|headset|headsets|speaker|speakers|soundbar|anc)\b', q_lower):
         category = "Audio"
+    elif re.search(r'\b(laptop|laptops|macbook|macbooks|notebook|notebooks|ultrabook|ultrabooks|pc|computer|computers)\b', q_lower):
+        category = "Laptops"
+    elif re.search(r'\b(watch|watches|smartwatch|smartwatches|fitness|band|bands|amoled watch)\b', q_lower):
+        category = "Wearables"
+    elif re.search(r'\b(phone|phones|mobile|mobiles|smartphone|smartphones|iphone|iphones|galaxy)\b', q_lower):
+        category = "Smartphones"
+    elif re.search(r'\b(mouse|mice|keyboard|keyboards|ssd|powerbank|charger|cooling pad|hub|microphone|mic)\b', q_lower):
+        category = "Accessories"
+    elif re.search(r'\b(alexa|echo|nest|bulb|bulbs|plug|plugs|camera|cameras|security)\b', q_lower):
+        category = "Smart Home"
 
     # 2. Extract Max Price
     max_price = 50000.0 if category == "Laptops" else 10000.0

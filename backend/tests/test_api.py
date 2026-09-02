@@ -1,6 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 from app.main import app
+from app.tools.product_tools import extract_intent_from_query
 
 client = TestClient(app)
 
@@ -9,6 +10,23 @@ def test_root_endpoint():
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "online"
+
+def test_category_intent_extraction_no_substring_bug():
+    # Test 1: "Find headphones for travel" must be Audio, NOT Smartphones!
+    intent1 = extract_intent_from_query("Find headphones for travel")
+    assert intent1["category"] == "Audio"
+
+    # Test 2: "I need headphones under ₹5,000 for online classes" must be Audio
+    intent2 = extract_intent_from_query("I need headphones under ₹5,000 for online classes")
+    assert intent2["category"] == "Audio"
+
+    # Test 3: "best smartphones under 20k" must be Smartphones
+    intent3 = extract_intent_from_query("best smartphones under 20k")
+    assert intent3["category"] == "Smartphones"
+
+    # Test 4: "best low budget laptops" must be Laptops
+    intent4 = extract_intent_from_query("best low budget laptops")
+    assert intent4["category"] == "Laptops"
 
 def test_products_endpoint():
     response = client.get("/api/v1/products")
