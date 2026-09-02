@@ -6,7 +6,7 @@ from app.config import settings
 def extract_intent_with_llm(query: str) -> Dict[str, Any]:
     """
     Uses OpenAI GPT-4o-mini (or intelligent regex fallback) to extract:
-      - category: Laptops, Audio, Wearables, Accessories, Smartphones, Smart Home
+      - category: Laptops, Audio, Wearables, Accessories, Smartphones, Smart Home, or None
       - max_price: float or None
       - intent_type: 'discovery' (suggest/find/show) or 'buy' (buy/checkout/order)
     """
@@ -23,12 +23,12 @@ def extract_intent_with_llm(query: str) -> Dict[str, Any]:
                     {
                         "role": "system",
                         "content": (
-                            "You are an AI Commerce Intent Extractor. "
+                            "You are an AI Commerce Intent Extractor for an e-commerce platform.\n"
                             "Extract structured JSON with keys:\n"
-                            "- category: string (one of 'Laptops', 'Audio', 'Wearables', 'Accessories', 'Smartphones', 'Smart Home')\n"
-                            "- max_price: float or null (extracted numeric price ceiling in INR)\n"
+                            "- category: string or null (Must be one of 'Laptops', 'Audio', 'Wearables', 'Accessories', 'Smartphones', 'Smart Home', or null if query spans multiple or general categories)\n"
+                            "- max_price: float or null (extracted numeric budget/price ceiling in INR. DO NOT parse ordinal generation terms like '2nd gen', '3rd gen', or RAM sizes like '16GB' as price!)\n"
                             "- intent_type: string ('discovery' if user is asking to suggest/find/show/compare, 'buy' if user explicitly wants to buy/checkout/order/proceed)\n"
-                            "- target_product_name: string or null (if specific model mentioned)\n\n"
+                            "- target_product_name: string or null (if specific model like 'google nest mini' mentioned)\n\n"
                             "Respond strictly with valid JSON only."
                         )
                     },
@@ -40,10 +40,9 @@ def extract_intent_with_llm(query: str) -> Dict[str, Any]:
             raw_content = response.choices[0].message.content
             parsed = json.loads(raw_content)
             
-            # Sanitize outputs
-            category = parsed.get("category", "Audio")
+            category = parsed.get("category")
             if category not in ["Laptops", "Audio", "Wearables", "Accessories", "Smartphones", "Smart Home"]:
-                category = "Audio"
+                category = None
 
             intent_type = parsed.get("intent_type", "discovery")
             if any(k in q_lower for k in ["buy", "checkout", "order", "purchase", "pay"]):
@@ -53,7 +52,7 @@ def extract_intent_with_llm(query: str) -> Dict[str, Any]:
             if max_price is not None:
                 try:
                     max_price = float(max_price)
-                except ValueError:
+                except (ValueError, TypeError):
                     max_price = None
 
             return {
@@ -68,41 +67,46 @@ def extract_intent_with_llm(query: str) -> Dict[str, Any]:
     # -------------------------------------------------------------------
     # Fallback Parser (Regex & Keyword Token Matching)
     # -------------------------------------------------------------------
-    category = "Audio"
-    if re.search(r'\b(laptop|laptops|macbook|macbooks|notebook|notebooks|ultrabook|ultrabooks|pc|computer|computers)\b', q_lower):
+    category = None
+    if re.search(r'\b(smart home|smart-home|smarthome|home automation|alexa|echo|nest|bulb|bulbs|plug|plugs|camera|cameras|security|doorbell|smart strip|hue|wipro|tp-link)\b', q_lower):
+        category = "Smart Home"
+    elif re.search(r'\b(laptop|laptops|macbook|macbooks|notebook|notebooks|ultrabook|ultrabooks|pc|computer|computers)\b', q_lower):
         category = "Laptops"
-    elif re.search(r'\b(headphone|headphones|earbud|earbuds|earphone|earphones|audio|headset|headsets|speaker|speakers|soundbar|anc)\b', q_lower):
-        category = "Audio"
-    elif re.search(r'\b(watch|watches|smartwatch|smartwatches|fitness|band|bands|amoled watch)\b', q_lower):
+    elif re.search(r'\b(watch|watches|smartwatch|smartwatches|fitness|band|bands|amoled watch|fitbit|garmin|amazfit|apple watch|galaxy watch)\b', q_lower):
         category = "Wearables"
     elif re.search(r'\b(phone|phones|mobile|mobiles|smartphone|smartphones|iphone|iphones|galaxy)\b', q_lower):
         category = "Smartphones"
     elif re.search(r'\b(mouse|mice|keyboard|keyboards|ssd|powerbank|charger|cooling pad|hub|microphone|mic)\b', q_lower):
         category = "Accessories"
-    elif re.search(r'\b(alexa|echo|nest|bulb|bulbs|plug|plugs|camera|cameras|security)\b', q_lower):
-        category = "Smart Home"
+    elif re.search(r'\b(headphone|headphones|earbud|earbuds|earphone|earphones|audio|headset|headsets|speaker|speakers|soundbar|anc|tws|airpods)\b', q_lower):
+        category = "Audio"
 
     # Determine intent type
     intent_type = "discovery"
     if any(k in q_lower for k in ["buy", "checkout", "order", "purchase", "pay", "buy best", "buy the best"]):
         intent_type = "buy"
 
-    # Extract price
+    # Extract price (strip ordinals like 2nd, 3rd, 1st, 16gb, 512gb)
+    clean_q = re.sub(r'\b\d+(st|nd|rd|th|in|inch|gb|tb)\b', '', q_lower)
     max_price = None
-    num_match = re.search(r'(?:under|below|less than|<|budget of|price below|price under|rs\.?|₹)?\s*(\d+)\s*(k|000)?', q_lower)
+
+    num_match = re.search(r'(?:under|below|less than|<|budget of|price below|price under|rs\.?|₹)\s*(\d+)\s*(k|000)?\b', clean_q)
+    if not num_match:
+        # Match standalone price numbers like 5000, 20000, 60000 or numbers followed by k (e.g. 5k, 20k, 60k)
+        num_match = re.search(r'\b(\d{4,6})\b|\b(\d+)\s*k\b', clean_q)
+
     if num_match:
         try:
-            val = float(num_match.group(1))
-            unit = num_match.group(2)
-            if unit == 'k' or val < 500:
-                val *= 1000.0
-            if val >= 1000:
-                max_price = val
+            val_str = num_match.group(1) or num_match.group(2)
+            if val_str:
+                val = float(val_str)
+                matched_text = clean_q[num_match.start():num_match.end()+2]
+                if 'k' in matched_text or val < 500:
+                    val *= 1000.0
+                if val >= 1000:
+                    max_price = val
         except Exception:
             pass
-
-    if max_price is None:
-        max_price = 60000.0 if category == "Laptops" else 5000.0
 
     return {
         "category": category,

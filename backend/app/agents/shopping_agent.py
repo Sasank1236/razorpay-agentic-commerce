@@ -98,7 +98,7 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
     # INTENT ROUTER 3: Memory / Preference Statement Only
     # -------------------------------------------------------------------
     is_explicit_purchase = any(kw in msg_lower for kw in ["buy", "purchase", "checkout", "add to cart", "get it", "order", "pay"])
-    if not is_explicit_purchase and any(kw in msg_lower for kw in ["prefer", "don't like", "dislike", "avoid", "hate", "love"]) and not any(kw in msg_lower for kw in ["suggest", "find", "show", "search"]):
+    if not is_explicit_purchase and any(kw in msg_lower for kw in ["prefer", "don't like", "dislike", "avoid", "hate", "love"]) and not any(kw in msg_lower for kw in ["suggest", "find", "show", "search", "home", "nest", "smart", "google"]):
         brands_fmt = ", ".join(memory_profile.preferred_brands) if memory_profile.preferred_brands else "Sony"
         avoid_fmt = ", ".join(memory_profile.avoid_traits) if memory_profile.avoid_traits else "Bulky (>220g)"
         return AgentChatResponse(
@@ -125,7 +125,9 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
         ))
 
         if search_res:
-            lines = [f"🔍 **Found {len(search_res)} matching {extracted_category} in Database (Budget: under ₹{max_budget:,.0f})**\n"]
+            cat_header = f"{extracted_category} " if extracted_category else ""
+            budget_header = f" (Budget: under ₹{max_budget:,.0f})" if max_budget else ""
+            lines = [f"🔍 **Found {len(search_res)} matching {cat_header}products in Database{budget_header}**\n"]
             suggested_actions = []
 
             for idx, p in enumerate(search_res[:4], 1):
@@ -172,7 +174,7 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
         step_number=1,
         step_name="Understand Request & Recall Memory",
         status="completed",
-        detail_message=f"LLM parsed intent & recalled memory: Category='{extracted_category}', Preferred Brands=['{brands_str}'], Avoid=['{avoid_str}'], Budget=₹{max_budget:,.0f}",
+        detail_message=f"LLM parsed intent & recalled memory: Category='{extracted_category or 'General'}', Preferred Brands=['{brands_str}'], Avoid=['{avoid_str}']",
         execution_time_ms=int((time.time() - t1) * 1000)
     ))
 
@@ -189,18 +191,19 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
         step_number=2,
         step_name="Search Products",
         status="completed",
-        detail_message=f"Searched database catalog for '{extracted_category}' and shortlisted {len(search_res)} matching candidates.",
+        detail_message=f"Searched database catalog for '{extracted_category or 'All Categories'}' and shortlisted {len(search_res)} matching candidates.",
         execution_time_ms=int((time.time() - t2) * 1000)
     ))
 
     # STEP 3: Filter Budget
     t3 = time.time()
-    budget_filtered = [p for p in search_res if p["price"] <= max_budget] if search_res else []
+    budget_filtered = [p for p in search_res if (max_budget is None or p["price"] <= max_budget)] if search_res else []
+    budget_desc = f"under ₹{max_budget:,.0f}" if max_budget else "all price ranges"
     workflow_steps.append(WorkflowStep(
         step_number=3,
         step_name="Filter Budget",
         status="completed",
-        detail_message=f"Filtered candidates under budget ceiling of ₹{max_budget:,.0f} ({len(budget_filtered)} matching items).",
+        detail_message=f"Filtered candidates under budget ceiling of {budget_desc} ({len(budget_filtered)} matching items).",
         execution_time_ms=int((time.time() - t3) * 1000)
     ))
 
@@ -210,7 +213,7 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
         step_number=4,
         step_name="Evaluate Specifications",
         status="completed",
-        detail_message=f"Evaluated performance specs, RAM/CPU/Display for {extracted_category}, and factored customer memory.",
+        detail_message=f"Evaluated performance specs for {extracted_category or 'selected model'}, and factored customer memory.",
         execution_time_ms=int((time.time() - t4) * 1000)
     ))
 

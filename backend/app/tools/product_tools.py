@@ -26,8 +26,6 @@ def extract_intent_from_query(query: str, memory_ceiling: float = 5000.0) -> Dic
     llm_intent = extract_intent_with_llm(query)
     category = llm_intent["category"]
     max_price = llm_intent["max_price"]
-    if max_price is None:
-        max_price = 60000.0 if category == "Laptops" else 5000.0
 
     return {
         "category": category,
@@ -46,7 +44,9 @@ def search_products(db: Session, query: str, category: Optional[str] = None, max
     if max_price:
         q = q.filter(Product.price <= max_price * 1.25)
 
-    keywords = [kw for kw in query.lower().split() if kw not in ["suggest", "some", "below", "under", "laptops", "price", "find", "show", "me", "the", "best", "good"]]
+    stop_words = {"suggest", "some", "below", "under", "price", "find", "show", "me", "the", "best", "good", "for", "a", "an", "is", "of", "in", "and"}
+    keywords = [kw for kw in re.findall(r'\b\w+\b', query.lower()) if kw not in stop_words and len(kw) > 1]
+    
     results = q.all()
     filtered = []
     

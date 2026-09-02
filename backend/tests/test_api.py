@@ -28,6 +28,22 @@ def test_category_intent_extraction_no_substring_bug():
     intent4 = extract_intent_from_query("best low budget laptops")
     assert intent4["category"] == "Laptops"
 
+def test_smart_home_category_intent_and_ordinal_price():
+    # 1. "smart home" must extract Smart Home category (NOT Audio!)
+    intent1 = extract_intent_from_query("smart home")
+    assert intent1["category"] == "Smart Home"
+
+    # 2. "google nest mini 2nd gen" must NOT parse "2nd" as price 2,000
+    intent2 = extract_intent_from_query("google nest mini 2nd gen")
+    assert intent2["category"] == "Smart Home"
+    assert intent2["max_price"] is None or intent2["max_price"] >= 3000.0
+
+    res = client.post("/api/v1/agents/customer/chat", json={"user_id": "user_customer_01", "message": "smart home"})
+    assert res.status_code == 200
+    data = res.json()
+    assert "Smart Home" in data["reply"]
+    assert "SoundMax" not in data["reply"]
+
 def test_recommendation_restricts_category():
     payload = {
         "user_id": "user_customer_01",
