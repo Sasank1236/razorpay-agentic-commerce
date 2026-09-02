@@ -25,12 +25,17 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
     memory_dict = extract_and_update_customer_memory(db, user_id=user_id, message=user_msg)
     memory_profile = CustomerMemoryProfile(**memory_dict)
 
+    # Use LLM to extract intent, product category, budget, and intent_type (discovery vs buy)
+    parsed_intent = extract_intent_from_query(user_msg)
+    extracted_category = parsed_intent["category"]
+    max_budget = parsed_intent["max_price"]
+    intent_type = parsed_intent["intent_type"]
+
     # -------------------------------------------------------------------
     # INTENT ROUTER 1: Check Stock Inventory Query
     # -------------------------------------------------------------------
     if "check stock" in msg_lower or "inventory" in msg_lower or msg_lower == "check stock inventory":
         t_inv = time.time()
-        # Find best matching product to check inventory for
         rec_info = get_recommendations_tool(db, query=user_msg, user_id=user_id)
         target_prod = rec_info["recommended_product"]
         target_id = target_prod["id"]
@@ -90,10 +95,10 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
         )
 
     # -------------------------------------------------------------------
-    # INTENT ROUTER 3: Memory / Preference Statement Only (Without Purchase Intent)
+    # INTENT ROUTER 3: Memory / Preference Statement Only
     # -------------------------------------------------------------------
-    is_explicit_purchase = any(kw in msg_lower for kw in ["buy", "purchase", "checkout", "add to cart", "get it", "order", "laptop", "headphones under", "best"])
-    if not is_explicit_purchase and any(kw in msg_lower for kw in ["prefer", "don't like", "dislike", "avoid", "hate", "love"]):
+    is_explicit_purchase = any(kw in msg_lower for kw in ["buy", "purchase", "checkout", "add to cart", "get it", "order", "pay"])
+    if not is_explicit_purchase and any(kw in msg_lower for kw in ["prefer", "don't like", "dislike", "avoid", "hate", "love"]) and not any(kw in msg_lower for kw in ["suggest", "find", "show", "search"]):
         brands_fmt = ", ".join(memory_profile.preferred_brands) if memory_profile.preferred_brands else "Sony"
         avoid_fmt = ", ".join(memory_profile.avoid_traits) if memory_profile.avoid_traits else "Bulky (>220g)"
         return AgentChatResponse(
@@ -106,16 +111,60 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
         )
 
     # -------------------------------------------------------------------
-    # INTENT ROUTER 4: Full 11-Step Purchase Agent Workflow
+    # INTENT ROUTER 4: Discovery / Product Options Presentation Flow
+    # (Triggered when user asks to suggest/find/search options without explicit "buy" command)
+    # -------------------------------------------------------------------
+    if not is_explicit_purchase and intent_type == "discovery":
+        t_search = time.time()
+        search_res = search_products(db, query=user_msg, category=extracted_category, max_price=max_budget)
+        tool_traces.append(ToolTrace(
+            tool_name="search_products_db",
+            input_args={"query": user_msg, "category": extracted_category, "max_price": max_budget},
+            output_summary={"found": len(search_res)},
+            execution_time_ms=int((time.time() - t_search) * 1000)
+        ))
+
+        if search_res:
+            lines = [f"🔍 **Found {len(search_res)} matching {extracted_category} in Database (Budget: under ₹{max_budget:,.0f})**\n"]
+            suggested_actions = []
+
+            for idx, p in enumerate(search_res[:4], 1):
+                p_detail = get_product_details(db, p["id"])
+                specs_dict = p_detail.get("specs", {}) if p_detail else {}
+                specs_summary = ", ".join([f"{k.upper()}: {v}" for k, v in list(specs_dict.items())[:3]]) if specs_dict else "High Quality"
+                
+                lines.append(f"{idx}. **{p['title']}** — **₹{p['price']:,.0f}** ({p['rating']}★)")
+                lines.append(f"   • **Brand**: {p['brand']} | **Stock**: {p_detail.get('stock_quantity', 50)} units")
+                lines.append(f"   • **Key Specs**: {specs_summary}\n")
+
+                if len(suggested_actions) < 2:
+                    suggested_actions.append(f"Buy {p['title']}")
+
+            suggested_actions.append("View Spec Comparison")
+
+            lines.append("💡 **Which product do you prefer?**")
+            lines.append("Click a buy option below to negotiate an AI discount and proceed to Razorpay checkout.")
+
+            top_p_details = get_product_details(db, search_res[0]["id"])
+            prod_resp = ProductResponse(**top_p_details) if top_p_details else None
+
+            return AgentChatResponse(
+                reply="\n".join(lines),
+                recommended_product=prod_resp,
+                tool_traces=tool_traces,
+                workflow_steps=[],
+                requires_user_approval=False,
+                memory_profile=memory_profile,
+                suggested_actions=suggested_actions
+            )
+
+    # -------------------------------------------------------------------
+    # INTENT ROUTER 5: Full 11-Step Purchase Agent Workflow (Explicit Buy / Checkout)
     # -------------------------------------------------------------------
     workflow_steps: List[WorkflowStep] = []
 
-    # STEP 1: Understand Request
+    # STEP 1: Understand Request & Recall Memory
     t1 = time.time()
-    parsed_intent = extract_intent_from_query(user_msg)
-    extracted_category = parsed_intent["category"]
-    max_budget = parsed_intent["max_price"]
-
     brands_str = ", ".join(memory_profile.preferred_brands) if memory_profile.preferred_brands else "None"
     avoid_str = ", ".join(memory_profile.avoid_traits) if memory_profile.avoid_traits else "None"
 
@@ -123,7 +172,7 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
         step_number=1,
         step_name="Understand Request & Recall Memory",
         status="completed",
-        detail_message=f"Parsed intent & recalled memory: Category='{extracted_category}', Preferred Brands=['{brands_str}'], Avoid=['{avoid_str}'], Budget=₹{max_budget:,.0f}",
+        detail_message=f"LLM parsed intent & recalled memory: Category='{extracted_category}', Preferred Brands=['{brands_str}'], Avoid=['{avoid_str}'], Budget=₹{max_budget:,.0f}",
         execution_time_ms=int((time.time() - t1) * 1000)
     ))
 
@@ -140,7 +189,7 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
         step_number=2,
         step_name="Search Products",
         status="completed",
-        detail_message=f"Searched product catalog for '{extracted_category}' and shortlisted {len(search_res)} matching candidates.",
+        detail_message=f"Searched database catalog for '{extracted_category}' and shortlisted {len(search_res)} matching candidates.",
         execution_time_ms=int((time.time() - t2) * 1000)
     ))
 

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.models import Product, Inventory, User, AgentAction, SearchEvent
 from app.services.recommendation import get_hybrid_recommendations
 from app.services.memory_service import get_customer_memory_profile
+from app.services.llm_intent_service import extract_intent_with_llm
 
 def log_agent_action(db: Session, agent_type: str, action_name: str, input_params: Any, output_summary: Any, start_time: float):
     exec_time = int((time.time() - start_time) * 1000)
@@ -22,53 +23,17 @@ def log_agent_action(db: Session, agent_type: str, action_name: str, input_param
     db.commit()
 
 def extract_intent_from_query(query: str, memory_ceiling: float = 5000.0) -> Dict[str, Any]:
-    q_lower = query.lower()
-
-    # 1. Extract Category using regex word boundaries to prevent substring collisions (e.g. 'phone' inside 'headphones')
-    category = "Audio"
-
-    if re.search(r'\b(headphone|headphones|earbud|earbuds|earphone|earphones|audio|headset|headsets|speaker|speakers|soundbar|anc)\b', q_lower):
-        category = "Audio"
-    elif re.search(r'\b(laptop|laptops|macbook|macbooks|notebook|notebooks|ultrabook|ultrabooks|pc|computer|computers)\b', q_lower):
-        category = "Laptops"
-    elif re.search(r'\b(watch|watches|smartwatch|smartwatches|fitness|band|bands|amoled watch)\b', q_lower):
-        category = "Wearables"
-    elif re.search(r'\b(phone|phones|mobile|mobiles|smartphone|smartphones|iphone|iphones|galaxy)\b', q_lower):
-        category = "Smartphones"
-    elif re.search(r'\b(mouse|mice|keyboard|keyboards|ssd|powerbank|charger|cooling pad|hub|microphone|mic)\b', q_lower):
-        category = "Accessories"
-    elif re.search(r'\b(alexa|echo|nest|bulb|bulbs|plug|plugs|camera|cameras|security)\b', q_lower):
-        category = "Smart Home"
-
-    # 2. Extract Max Price
-    max_price = 50000.0 if category == "Laptops" else 10000.0
-    if category == "Laptops":
-        if "budget" in q_lower or "low" in q_lower or "cheap" in q_lower or "under 60" in q_lower or "under 60000" in q_lower:
-            max_price = 60000.0
-        else:
-            max_price = 150000.0
-    elif category == "Audio":
-        if "under 5000" in q_lower or "under 5k" in q_lower or "< 5000" in q_lower or "< 5k" in q_lower or "5,000" in q_lower:
-            max_price = 5000.0
-        elif "travel" in q_lower or "premium" in q_lower or "flagship" in q_lower:
-            max_price = 35000.0
-
-    # Parse explicit numeric budget like "under 15000" or "under 15k"
-    num_match = re.search(r'(?:under|below|less than|<|budget of|rs\.?|₹)?\s*(\d+)\s*(k|000)?', q_lower)
-    if num_match:
-        try:
-            val = float(num_match.group(1))
-            unit = num_match.group(2)
-            if unit == 'k' or val < 500:
-                val *= 1000.0
-            if val >= 1000:
-                max_price = val
-        except Exception:
-            pass
+    llm_intent = extract_intent_with_llm(query)
+    category = llm_intent["category"]
+    max_price = llm_intent["max_price"]
+    if max_price is None:
+        max_price = 60000.0 if category == "Laptops" else 5000.0
 
     return {
         "category": category,
         "max_price": max_price,
+        "intent_type": llm_intent.get("intent_type", "discovery"),
+        "target_product_name": llm_intent.get("target_product_name"),
         "priorities": ["calls", "battery", "performance", "display", "mic"]
     }
 
@@ -79,9 +44,9 @@ def search_products(db: Session, query: str, category: Optional[str] = None, max
     if category:
         q = q.filter(Product.category.ilike(f"%{category}%"))
     if max_price:
-        q = q.filter(Product.price <= max_price)
+        q = q.filter(Product.price <= max_price * 1.25)
 
-    keywords = query.lower().split()
+    keywords = [kw for kw in query.lower().split() if kw not in ["suggest", "some", "below", "under", "laptops", "price", "find", "show", "me", "the", "best", "good"]]
     results = q.all()
     filtered = []
     
@@ -90,6 +55,7 @@ def search_products(db: Session, query: str, category: Optional[str] = None, max
         if any(kw in text for kw in keywords) or not keywords:
             filtered.append(p)
 
+    candidates = filtered if filtered else results
     out = [{
         "id": p.id,
         "title": p.title,
@@ -97,8 +63,10 @@ def search_products(db: Session, query: str, category: Optional[str] = None, max
         "price": p.price,
         "rating": p.rating,
         "brand": p.brand,
+        "description": p.description,
+        "specs": p.specs,
         "image_url": p.image_url
-    } for p in (filtered[:8] if filtered else results[:8])]
+    } for p in candidates[:8]]
 
     search_evt = SearchEvent(
         id=f"se_{uuid.uuid4().hex[:8]}",
