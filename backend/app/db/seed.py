@@ -143,6 +143,95 @@ def seed_db():
             "Smart Home": ("Smart Strip", "Motion Sensor", "Doorbell Cam")
         }
 
+        # Category/sub-type → curated pool of relevant Unsplash image URLs
+        _img_pool = {
+            # Audio
+            "Wireless Earbuds": [
+                "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=500",
+                "https://images.unsplash.com/photo-1606220588913-b3aacb4d2f46?w=500",
+                "https://images.unsplash.com/photo-1649610396553-5fc68feda40b?w=500",
+            ],
+            "Bluetooth Speaker": [
+                "https://images.unsplash.com/photo-1608043152269-423dbba4e7e1?w=500",
+                "https://images.unsplash.com/photo-1558537348-c0f8e733989d?w=500",
+                "https://images.unsplash.com/photo-1507608158173-1dcec673a2e5?w=500",
+            ],
+            "Gaming Headset": [
+                "https://images.unsplash.com/photo-1612198188060-c7c2a3b66eae?w=500",
+                "https://images.unsplash.com/photo-1542393545-10f5cde2c810?w=500",
+                "https://images.unsplash.com/photo-1598550476439-6847785fcea6?w=500",
+            ],
+            "Neckband": [
+                "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=500",
+                "https://images.unsplash.com/photo-1484704849700-f032a568e944?w=500",
+                "https://images.unsplash.com/photo-1546435770-a3e426bf472b?w=500",
+            ],
+            # Wearables
+            "Smart Band": [
+                "https://images.unsplash.com/photo-1576243345690-4e4b79b63284?w=500",
+                "https://images.unsplash.com/photo-1510017803434-a899398421b3?w=500",
+                "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=500",
+            ],
+            "Sports Watch": [
+                "https://images.unsplash.com/photo-1508685096489-7aacd43bd3b1?w=500",
+                "https://images.unsplash.com/photo-1544117519-31a4b719223d?w=500",
+                "https://images.unsplash.com/photo-1539185441755-769473a23570?w=500",
+            ],
+            "Health Tracker": [
+                "https://images.unsplash.com/photo-1579586337278-3befd40fd17a?w=500",
+                "https://images.unsplash.com/photo-1434493789847-2f02dc6ca35d?w=500",
+                "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=500",
+            ],
+            # Accessories
+            "Fast Cable": [
+                "https://images.unsplash.com/photo-1583863788434-e58a36330cf0?w=500",
+                "https://images.unsplash.com/photo-1544816155-12df9643f363?w=500",
+                "https://images.unsplash.com/photo-1609592424109-dd9892f1b177?w=500",
+            ],
+            "Mousepad RGB": [
+                "https://images.unsplash.com/photo-1527814050087-3793815479db?w=500",
+                "https://images.unsplash.com/photo-1547082299-de196ea013d6?w=500",
+                "https://images.unsplash.com/photo-1615663245857-ac93bb7c39e7?w=500",
+            ],
+            "Laptop Sleeve": [
+                "https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?w=500",
+                "https://images.unsplash.com/photo-1541807084-5c52b6b3adef?w=500",
+                "https://images.unsplash.com/photo-1587829741301-dc798b83add3?w=500",
+            ],
+            "Phone Mount": [
+                "https://images.unsplash.com/photo-1597872200969-2b65d56bd16b?w=500",
+                "https://images.unsplash.com/photo-1583394838336-acd977736f90?w=500",
+                "https://images.unsplash.com/photo-1615663245857-ac93bb7c39e7?w=500",
+            ],
+            # Laptops
+            "Slim Ultrabook": [
+                "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=500",
+                "https://images.unsplash.com/photo-1593642632823-8f785ba67e45?w=500",
+                "https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?w=500",
+            ],
+            "Convertible 2-in-1": [
+                "https://images.unsplash.com/photo-1603302576837-37561b2e2302?w=500",
+                "https://images.unsplash.com/photo-1541807084-5c52b6b3adef?w=500",
+                "https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?w=500",
+            ],
+            # Smart Home
+            "Smart Strip": [
+                "https://images.unsplash.com/photo-1558002038-1055907df827?w=500",
+                "https://images.unsplash.com/photo-1550985616-10810253b84d?w=500",
+                "https://images.unsplash.com/photo-1543512214-318c7553f230?w=500",
+            ],
+            "Motion Sensor": [
+                "https://images.unsplash.com/photo-1557324232-b8917d3c3dcb?w=500",
+                "https://images.unsplash.com/photo-1558002038-1055907df827?w=500",
+                "https://images.unsplash.com/photo-1507646298591-24757e6985d8?w=500",
+            ],
+            "Doorbell Cam": [
+                "https://images.unsplash.com/photo-1557324232-b8917d3c3dcb?w=500",
+                "https://images.unsplash.com/photo-1543512214-318c7553f230?w=500",
+                "https://images.unsplash.com/photo-1507646298591-24757e6985d8?w=500",
+            ],
+        }
+
         while idx <= 105:
             cat_name = random.choice(list(sub_categories.keys()))
             sub_type = random.choice(sub_categories[cat_name])
@@ -153,7 +242,11 @@ def seed_db():
             rating = round(random.uniform(3.9, 4.9), 1)
             reviews = random.randint(20, 600)
             p_id = f"prod_{idx:03d}"
-            
+
+            # Pick a deterministic (but varied) image from the pool for this sub-type
+            img_choices = _img_pool.get(sub_type, ["https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=500"])
+            chosen_image = img_choices[idx % len(img_choices)]
+
             prod = Product(
                 id=p_id,
                 title=title,
@@ -166,7 +259,7 @@ def seed_db():
                 review_count=reviews,
                 specs={"connectivity": "Bluetooth 5.3", "warranty": "1 Year", "color": "Matte Black"},
                 tags=[cat_name.lower(), sub_type.lower().replace(" ", "-"), "featured"],
-                image_url="https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=500"
+                image_url=chosen_image
             )
             inv = Inventory(
                 id=f"inv_{idx:03d}",
