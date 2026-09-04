@@ -3,11 +3,13 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from app.config import settings
 
-# For SQLite, enable check_same_thread=False
-connect_args = {"check_same_thread": False} if settings.DATABASE_URL.startswith("sqlite") else {}
+# Use normalized URL: converts Render's postgres:// → postgresql+psycopg2://
+# Falls back to sqlite:///./razorbuy.db for local development
+_db_url = settings.database_url_normalized
+connect_args = {"check_same_thread": False} if _db_url.startswith("sqlite") else {}
 
 engine = create_engine(
-    settings.DATABASE_URL,
+    _db_url,
     connect_args=connect_args,
     pool_pre_ping=True
 )

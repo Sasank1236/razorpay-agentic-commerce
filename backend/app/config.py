@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     RAZORPAY_KEY_ID: str = "rzp_test_dummy_key_id"
     RAZORPAY_KEY_SECRET: str = "dummy_secret_key"
     
-    # CORS
+    # CORS — include your Vercel URL here after deployment
     BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
     model_config = SettingsConfigDict(
@@ -29,5 +29,15 @@ class Settings(BaseSettings):
         case_sensitive=True,
         extra="ignore"
     )
+
+    @property
+    def database_url_normalized(self) -> str:
+        """Render injects postgres:// URLs; SQLAlchemy 2.x requires postgresql+psycopg2://"""
+        url = self.DATABASE_URL
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql+psycopg2://", 1)
+        elif url.startswith("postgresql://") and "+" not in url:
+            url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
+        return url
 
 settings = Settings()
