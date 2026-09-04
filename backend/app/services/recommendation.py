@@ -8,7 +8,8 @@ from app.config import settings
 def calculate_product_score(
     product: Product,
     query_intent: Dict[str, Any],
-    user_preferences: Dict[str, Any]
+    user_preferences: Dict[str, Any],
+    raw_query: str = ""
 ) -> Dict[str, Any]:
     """
     Memory-Infused Hybrid Scoring Formula:
@@ -19,16 +20,24 @@ def calculate_product_score(
       - 10% Popularity / Bestseller tags
     """
     max_budget = query_intent.get("max_price") or 5000
-    category = query_intent.get("category", "")
+    category = query_intent.get("category") or ""
     priority_features = query_intent.get("priorities", ["calls", "battery"])
 
     preferred_brands = user_preferences.get("preferred_brands", [])
     avoid_traits = user_preferences.get("avoid_traits", [])
 
     # 1. Preference / Category match score (0 - 30)
-    pref_score = 30.0 if product.category.lower() == category.lower() else 15.0
+    pref_score = 30.0 if category and product.category.lower() == category.lower() else 15.0
     if any(p.lower() in product.title.lower() or p.lower() in (product.description or "").lower() for p in priority_features):
         pref_score = min(30.0, pref_score + 10.0)
+
+    # Title match bonus: if user query explicitly mentions words from product title (e.g. "AudioPhonic H50")
+    if raw_query:
+        raw_lower = raw_query.lower()
+        title_lower = product.title.lower()
+        # Direct match for model/brand
+        if title_lower in raw_lower or any(word in raw_lower for word in title_lower.split() if len(word) > 2 and word not in ["the", "pro", "wireless", "earbuds", "headphones", "watch", "smart", "laptop", "mini"]):
+            pref_score = min(30.0, pref_score + 15.0)
 
     # MEMORY BOOST: Brand Loyalty (+15 pts)
     memory_brand_bonus = 0.0
@@ -103,8 +112,8 @@ def get_hybrid_recommendations(
     then scores them using Customer Memory and generates structured reasoning.
     """
     user_preferences = user_preferences or {}
-    category = extracted_intent.get("category", "Audio")
-    max_price = extracted_intent.get("max_price") or 5000
+    category = extracted_intent.get("category")
+    max_price = extracted_intent.get("max_price") or 50000.0
 
     # Base query: Join Inventory to enforce stock_quantity > 0
     query_builder = db.query(Product).join(Inventory, Product.id == Inventory.product_id).filter(
@@ -112,8 +121,18 @@ def get_hybrid_recommendations(
     )
 
     candidates = []
+
+    # 1. First check if specific product title/model is mentioned in query
+    query_words = [w for w in query.lower().split() if len(w) > 2 and w not in ["buy", "the", "get", "for", "view", "spec", "comparison", "under", "below", "suggest", "show"]]
+    if query_words:
+        for w in query_words:
+            matched = query_builder.filter(Product.title.ilike(f"%{w}%")).all()
+            for m in matched:
+                if m not in candidates:
+                    candidates.append(m)
+
+    # 2. Category match
     if category:
-        # Strictly filter by category and price ceiling
         category_candidates = query_builder.filter(
             Product.category.ilike(f"%{category}%"),
             Product.price <= max_price * 1.25
@@ -125,7 +144,9 @@ def get_hybrid_recommendations(
                 Product.category.ilike(f"%{category}%")
             ).all()
 
-        candidates = category_candidates
+        for c in category_candidates:
+            if c not in candidates:
+                candidates.append(c)
 
     if not candidates:
         candidates = query_builder.filter(Product.price <= max_price * 1.25).all()
@@ -135,7 +156,7 @@ def get_hybrid_recommendations(
 
     scored_candidates = []
     for p in candidates:
-        score_info = calculate_product_score(p, extracted_intent, user_preferences)
+        score_info = calculate_product_score(p, extracted_intent, user_preferences, raw_query=query)
         scored_candidates.append((p, score_info))
 
     # Sort descending by score
@@ -147,13 +168,19 @@ def get_hybrid_recommendations(
 
     preferred_brands = user_preferences.get("preferred_brands", [])
     memory_preamble = ""
-    if preferred_brands and any(b.lower() in best_product.brand.lower() for b in preferred_brands):
+    if best_product and preferred_brands and any(b.lower() in best_product.brand.lower() for b in preferred_brands):
         memory_preamble = f"Based on your stored preference for **{', '.join(preferred_brands)}** and lightweight non-bulky designs, "
 
+    cat_desc = f" in the {category} category" if category else ""
+    best_title = best_product.title if best_product else "Top Recommended Product"
+    best_price = best_product.price if best_product else 0
+    best_rating = best_product.rating if best_product else 4.5
+    top_score = score_details[0]["total_score"] if score_details else 90.0
+
     reasoning = (
-        f"{memory_preamble}we evaluated {len(candidates)} candidate products in the {category} category. "
-        f"**{best_product.title}** scored the highest ({score_details[0]['total_score']}/100) because it fits your budget at ₹{best_product.price:,.0f}, "
-        f"features a {best_product.rating}★ rating, and perfectly aligns with your use-case priorities."
+        f"{memory_preamble}we evaluated {len(candidates)} candidate products{cat_desc}. "
+        f"**{best_title}** scored the highest ({top_score}/100) because it fits your budget at ₹{best_price:,.0f}, "
+        f"features a {best_rating}★ rating, and perfectly aligns with your use-case priorities."
     )
 
     return best_product, top_candidates, score_details, reasoning

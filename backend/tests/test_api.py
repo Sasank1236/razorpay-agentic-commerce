@@ -178,3 +178,26 @@ def test_checkout_and_razorpay_flow():
     })
     assert verify_resp.status_code == 200
     assert verify_resp.json()["success"] is True
+
+def test_spec_comparison_and_buy_specific_product():
+    # 1. Test "View Spec Comparison" query
+    res_comp = client.post("/api/v1/agents/customer/chat", json={
+        "user_id": "user_customer_01",
+        "message": "View Spec Comparison"
+    })
+    assert res_comp.status_code == 200
+    comp_data = res_comp.json()
+    assert "Side-by-Side Candidate Spec Comparison" in comp_data["reply"]
+    assert comp_data["comparison_table"] is not None
+
+    # 2. Test "Buy AudioPhonic H50" query
+    res_buy = client.post("/api/v1/agents/customer/chat", json={
+        "user_id": "user_customer_01",
+        "message": "Buy AudioPhonic H50"
+    })
+    assert res_buy.status_code == 200
+    buy_data = res_buy.json()
+    assert buy_data["requires_user_approval"] is True
+    assert buy_data["staged_order_id"] is not None
+    assert buy_data["recommended_product"]["title"] == "AudioPhonic H50"
+
