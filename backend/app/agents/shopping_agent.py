@@ -426,7 +426,15 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
         execution_time_ms=int((time.time() - t10) * 1000)
     ))
 
-    order_res = create_staged_order_tool(db, cart_id=cart_res["cart_id"], coupon_code=price_res["coupon_code"], discount_amount=price_res["discount_amount"], user_id=user_id)
+    order_res = create_staged_order_tool(
+        db,
+        cart_id=cart_res["cart_id"],
+        coupon_code=price_res["coupon_code"],
+        discount_amount=price_res["discount_amount"],
+        user_id=user_id,
+        product_id=best_p_id,  # BUGFIX: create order for this exact product only,
+        quantity=1,            # not from potentially-stale full cart contents
+    )
     tool_traces.append(ToolTrace(
         tool_name="create_staged_order",
         input_args={"cart_id": cart_res["cart_id"], "coupon_code": price_res["coupon_code"]},

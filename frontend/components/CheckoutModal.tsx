@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ShieldCheck, CreditCard, Lock, CheckCircle2, AlertCircle, X, Sparkles, Tag } from 'lucide-react';
 import { createRazorpayOrderApi, verifyPaymentApi } from '@/lib/api';
 
@@ -26,6 +26,17 @@ export default function CheckoutModal({
   const [loading, setLoading] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  // BUGFIX: Reset all state whenever the modal is opened for a new purchase.
+  // Without this, paymentSuccess=true from a previous purchase persists and
+  // the second checkout immediately shows the success screen without launching Razorpay.
+  useEffect(() => {
+    if (isOpen) {
+      setPaymentSuccess(false);
+      setErrorMsg('');
+      setLoading(false);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

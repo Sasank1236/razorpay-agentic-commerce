@@ -134,8 +134,71 @@ def add_to_cart_tool(db: Session, product_id: str, quantity: int = 1, user_id: s
     log_agent_action(db, "customer", "add_to_cart", {"product_id": product_id, "quantity": quantity}, out, start_time)
     return out
 
-def create_staged_order_tool(db: Session, cart_id: str, coupon_code: Optional[str] = None, discount_amount: float = 0.0, user_id: str = "user_customer_01") -> Dict[str, Any]:
+def create_staged_order_tool(
+    db: Session,
+    cart_id: str,
+    coupon_code: Optional[str] = None,
+    discount_amount: float = 0.0,
+    user_id: str = "user_customer_01",
+    product_id: Optional[str] = None,
+    quantity: int = 1,
+) -> Dict[str, Any]:
+    """
+    Create a staged (pending-approval) order.
+
+    If product_id is supplied the order is created for EXACTLY that one
+    product at its current DB price — the cart is NOT used.  This prevents
+    cart-accumulation bugs when the 11-step workflow is run multiple times
+    without completing payment each time.
+
+    If product_id is not supplied the legacy cart-based flow is used (for
+    compatibility with the cart-checkout button in the UI).
+    """
     start_time = time.time()
+
+    if product_id:
+        # --- Single-product order path (used by the 11-step agent workflow) ---
+        product = db.query(Product).filter(Product.id == product_id).first()
+        if not product:
+            return {"error": f"Product {product_id} not found"}
+
+        raw_total = round(product.price * quantity, 2)
+        final_total = max(1.0, round(raw_total - discount_amount, 2))
+        order_id = f"ord_{uuid.uuid4().hex[:8]}"
+
+        order = Order(
+            id=order_id,
+            user_id=user_id,
+            total_amount=final_total,
+            currency="INR",
+            status="created",
+        )
+        db.add(order)
+        db.commit()
+
+        oi = OrderItem(
+            id=f"oi_{uuid.uuid4().hex[:8]}",
+            order_id=order.id,
+            product_id=product_id,
+            quantity=quantity,
+            price=product.price,
+        )
+        db.add(oi)
+        db.commit()
+
+        out = {
+            "order_id": order.id,
+            "original_amount": raw_total,
+            "discount_amount": discount_amount,
+            "coupon_code": coupon_code,
+            "total_amount": final_total,
+            "status": "staged_pending_approval",
+            "items_count": 1,
+        }
+        log_agent_action(db, "customer", "create_staged_order", {"product_id": product_id, "quantity": quantity, "coupon_code": coupon_code}, out, start_time)
+        return out
+
+    # --- Legacy cart-based path (used by manual cart checkout) ---
     cart = db.query(Cart).filter(Cart.id == cart_id).first()
     if not cart or not cart.items:
         cart = get_or_create_cart(db, user_id)
@@ -178,4 +241,4 @@ def create_staged_order_tool(db: Session, cart_id: str, coupon_code: Optional[st
         "items_count": len(cart.items)
     }
     log_agent_action(db, "customer", "create_staged_order", {"cart_id": cart.id, "coupon_code": coupon_code}, out, start_time)
-    return out
+    return out

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import Navbar from '@/components/Navbar';
 import ProductCard from '@/components/ProductCard';
 import AIChatDrawer from '@/components/AIChatDrawer';
@@ -24,8 +24,12 @@ export default function ShopPage() {
   const [compareProducts, setCompareProducts] = useState<Product[]>([]);
   const [isCompareOpen, setIsCompareOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
-  const [stagedOrderId, setStagedOrderId] = useState("ord_staged_001");
-  const [stagedAmount, setStagedAmount] = useState(4499.0);
+  const [stagedOrderId, setStagedOrderId] = useState('');
+  const [stagedAmount, setStagedAmount] = useState(0);
+
+  // Ref callback used to mark Step 11 as completed inside AIChatDrawer
+  // after Razorpay payment verification succeeds (Bug 2 fix).
+  const markWorkflowCompleteRef = useRef<(() => void) | null>(null);
 
   const loadProducts = async () => {
     setLoading(true);
@@ -206,6 +210,7 @@ export default function ShopPage() {
         isOpen={isAIChatOpen}
         onClose={() => setIsAIChatOpen(false)}
         onInitiateCheckout={handleInitiateCheckout}
+        markWorkflowCompleteRef={markWorkflowCompleteRef}
       />
 
       {/* Cart Drawer */}
@@ -260,6 +265,10 @@ export default function ShopPage() {
         orderId={stagedOrderId}
         amount={stagedAmount}
         onPaymentSuccess={() => {
+          // Mark Step 11 as completed in the chat drawer (Bug 2 fix)
+          if (markWorkflowCompleteRef.current) {
+            markWorkflowCompleteRef.current();
+          }
           loadCartData();
           loadProducts();
         }}

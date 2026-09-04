@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Bot, Send, X, Sparkles, CheckCircle2, ShoppingCart, ShieldAlert, ChevronRight, Terminal, Star, ArrowRight, Cpu, Tag, PackageCheck } from 'lucide-react';
 import { sendAgentMessage, AgentChatResponse, Product, WorkflowStep, AINegotiatedOffer, CustomerMemoryProfile } from '@/lib/api';
 import PurchaseWorkflowVisualizer from '@/components/PurchaseWorkflowVisualizer';
@@ -11,6 +11,8 @@ interface AIChatDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   onInitiateCheckout: (productId?: string, stagedOrderId?: string, stagedAmount?: number) => void;
+  onPaymentComplete?: () => void; // injected back from parent after Razorpay success
+  markWorkflowCompleteRef?: React.MutableRefObject<(() => void) | null>;
 }
 
 interface MessageItem {
@@ -33,7 +35,7 @@ interface MessageItem {
   memoryProfile?: CustomerMemoryProfile;
 }
 
-export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout }: AIChatDrawerProps) {
+export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout, markWorkflowCompleteRef }: AIChatDrawerProps) {
   const [inputMessage, setInputMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState<MessageItem[]>([
@@ -50,6 +52,34 @@ export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout }: AI
   ]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // BUGFIX: Expose a function to the parent so it can mark Step 11 as
+  // completed after Razorpay payment succeeds. The parent calls this via the
+  // markWorkflowCompleteRef after verifyPaymentApi returns success.
+  const markLastWorkflowComplete = () => {
+    setMessages((prev) => {
+      // Walk backwards to find the last message with an in_progress workflow step
+      for (let i = prev.length - 1; i >= 0; i--) {
+        const msg = prev[i];
+        if (msg.workflowSteps && msg.workflowSteps.some((s) => s.status === 'in_progress')) {
+          const updatedSteps = msg.workflowSteps.map((s) =>
+            s.status === 'in_progress' ? { ...s, status: 'completed', detail_message: '✅ Payment verified. Order confirmed & inventory updated.' } : s
+          );
+          const updatedMsg = { ...msg, workflowSteps: updatedSteps, requiresApproval: false };
+          return [...prev.slice(0, i), updatedMsg, ...prev.slice(i + 1)];
+        }
+      }
+      return prev;
+    });
+  };
+
+  // Register the callback so the parent (shop/page.tsx) can trigger it
+  useEffect(() => {
+    if (markWorkflowCompleteRef) {
+      markWorkflowCompleteRef.current = markLastWorkflowComplete;
+    }
+  }, [markWorkflowCompleteRef]);
+
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
