@@ -1,6 +1,7 @@
 import os
+import json
 from typing import List, Union
-from pydantic import AnyHttpUrl, validator
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
@@ -20,8 +21,35 @@ class Settings(BaseSettings):
     RAZORPAY_KEY_ID: str = "rzp_test_dummy_key_id"
     RAZORPAY_KEY_SECRET: str = "dummy_secret_key"
     
-    # CORS — include your Vercel URL here after deployment
+    # CORS — accepts a plain URL, comma-separated string, or JSON array string
+    # e.g. on Render you can just type:  https://your-app.vercel.app
     BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+
+    @field_validator("BACKEND_CORS_ORIGINS", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v):
+        """
+        Accept any of these formats from environment variables:
+          - JSON array:        ["https://a.vercel.app","http://localhost:3000"]
+          - Comma-separated:   https://a.vercel.app,http://localhost:3000
+          - Single URL:        https://a.vercel.app
+          - Already a list:    (passed through as-is)
+        """
+        if isinstance(v, list):
+            return v
+        if isinstance(v, str):
+            v = v.strip()
+            # Try JSON array first
+            if v.startswith("["):
+                try:
+                    parsed = json.loads(v)
+                    if isinstance(parsed, list):
+                        return parsed
+                except json.JSONDecodeError:
+                    pass
+            # Comma-separated or single value
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
+        return v
 
     model_config = SettingsConfigDict(
         env_file=".env",
