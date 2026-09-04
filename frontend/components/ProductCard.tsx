@@ -85,10 +85,11 @@ export default function ProductCard({ product, onAddToCart, onCompare, isRecomme
             {onCompare && (
               <button
                 onClick={() => onCompare(product)}
-                className="p-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 transition-colors"
-                title="Compare Product"
+                className="flex items-center gap-1 px-2.5 py-2 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 hover:text-purple-200 border border-purple-500/30 text-xs font-semibold transition-all active:scale-95 shadow-sm"
+                title={`Compare ${product.title} with similar ${product.category}`}
               >
-                <Scale className="w-4 h-4 text-purple-400" />
+                <Scale className="w-3.5 h-3.5 text-purple-400" />
+                <span>Compare</span>
               </button>
             )}
             <button

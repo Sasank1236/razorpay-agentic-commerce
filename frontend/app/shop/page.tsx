@@ -69,12 +69,11 @@ export default function ShopPage() {
   };
 
   const handleCompare = (product: Product) => {
-    if (compareProducts.some(p => p.id === product.id)) return;
-    const updated = [...compareProducts, product].slice(0, 3);
-    setCompareProducts(updated);
-    if (updated.length >= 2) {
-      setIsCompareOpen(true);
-    }
+    // Automatically find and compare with items of the same type/category (e.g. Accessories, Audio, etc.)
+    const sameCategoryItems = products.filter(p => p.category.toLowerCase() === product.category.toLowerCase() && p.id !== product.id);
+    const toCompare = [product, ...sameCategoryItems.slice(0, 2)];
+    setCompareProducts(toCompare);
+    setIsCompareOpen(true);
   };
 
   const handleInitiateCheckout = async (productId?: string, customOrderId?: string, customAmount?: number) => {
