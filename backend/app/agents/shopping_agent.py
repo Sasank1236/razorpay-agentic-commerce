@@ -11,6 +11,7 @@ from app.tools.cart_tools import (
     apply_coupon_tool, calculate_final_price_tool
 )
 from app.services.memory_service import extract_and_update_customer_memory, get_customer_memory_profile
+from app.models import Product, Inventory, Cart, CartItem, Order
 from app.schemas.agent import AgentChatRequest, AgentChatResponse, ToolTrace, WorkflowStep, AINegotiatedOffer, CustomerMemoryProfile
 from app.schemas.product import ProductResponse
 from app.config import settings
@@ -32,41 +33,148 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
     intent_type = parsed_intent["intent_type"]
 
     # -------------------------------------------------------------------
-    # INTENT ROUTER 1: Check Stock Inventory Query
+    # INTENT ROUTER 0: Cart Contents / List Products in Cart
     # -------------------------------------------------------------------
-    if "check stock" in msg_lower or "inventory" in msg_lower or msg_lower == "check stock inventory":
-        t_inv = time.time()
-        rec_info = get_recommendations_tool(db, query=user_msg, user_id=user_id)
-        target_prod = rec_info["recommended_product"]
-        target_id = target_prod["id"]
-
-        inv_res = check_inventory_tool(db, product_id=target_id)
+    if any(k in msg_lower for k in ["in cart", "in the cart", "my cart", "view cart", "show cart", "cart items", "products in cart", "list cart", "list out cart", "list out all the products in cart", "what is in my cart", "what's in my cart"]):
+        t_cart = time.time()
+        cart = db.query(Cart).filter(Cart.user_id == user_id, Cart.status == "active").first()
+        cart_items = cart.items if cart else []
+        
         tool_traces.append(ToolTrace(
-            tool_name="check_inventory",
-            input_args={"product_id": target_id},
-            output_summary=inv_res,
-            execution_time_ms=int((time.time() - t_inv) * 1000)
+            tool_name="view_cart",
+            input_args={"user_id": user_id},
+            output_summary={"cart_id": cart.id if cart else None, "items_count": len(cart_items)},
+            execution_time_ms=int((time.time() - t_cart) * 1000)
         ))
-        p_details = get_product_details(db, target_id)
-        prod_resp = ProductResponse(**p_details) if p_details else None
 
-        clean_report = (
-            "📦 **Real-Time Stock Inventory Report**\n\n"
-            f"• **Product**: {inv_res['product_title']} (`{target_id}`)\n"
-            f"• **Available Stock**: **{inv_res['stock_quantity']} units in stock**\n"
-            f"• **Inventory Status**: {inv_res['status']} & Ready for Immediate Dispatch\n"
-            "• **Fulfillment Location**: Main Bengaluru Commerce Hub"
-        )
+        if not cart_items:
+            return AgentChatResponse(
+                reply="🛒 **Your Shopping Cart is currently empty.**\n\nSearch or ask me to recommend headphones, laptops, wearables, or smart home devices, and I will find the best deals with AI-negotiated discounts!",
+                tool_traces=tool_traces,
+                workflow_steps=[],
+                requires_user_approval=False,
+                memory_profile=memory_profile,
+                suggested_actions=["Find headphones for travel", "Find best laptops under 60k", "List all products in stock"]
+            )
+
+        lines = [f"🛒 **Your Active Shopping Cart ({len(cart_items)} item{'s' if len(cart_items) > 1 else ''})**\n"]
+        subtotal = 0.0
+        suggested_actions = []
+        top_prod_resp = None
+
+        for idx, item in enumerate(cart_items, 1):
+            p = db.query(Product).filter(Product.id == item.product_id).first()
+            inv = db.query(Inventory).filter(Inventory.product_id == item.product_id).first()
+            stock_qty = inv.stock_quantity if inv else 50
+            item_subtotal = item.quantity * item.unit_price
+            subtotal += item_subtotal
+
+            title = p.title if p else f"Product #{item.product_id}"
+            lines.append(f"{idx}. **{title}**")
+            lines.append(f"   • **Qty**: {item.quantity} × ₹{item.unit_price:,.0f} | **Subtotal**: **₹{item_subtotal:,.0f}**")
+            lines.append(f"   • **Availability**: {stock_qty} units in stock ({'✅ Ready for Dispatch' if stock_qty > 0 else '⚠️ Out of Stock'})\n")
+
+            if idx == 1 and p:
+                p_details = get_product_details(db, p.id)
+                top_prod_resp = ProductResponse(**p_details) if p_details else None
+                suggested_actions.append(f"Buy {title}")
+
+        lines.append(f"💰 **Total Cart Value**: **₹{subtotal:,.0f}**")
+        lines.append("🚚 **Shipping & Delivery**: FREE Fast Dispatch")
+        lines.append("\nClick **Proceed to Checkout** to stage your order and launch Razorpay Standard Checkout.")
+
+        suggested_actions.extend(["Check Stock Inventory", "View Spec Comparison"])
 
         return AgentChatResponse(
-            reply=clean_report,
-            recommended_product=prod_resp,
+            reply="\n".join(lines),
+            recommended_product=top_prod_resp,
             tool_traces=tool_traces,
             workflow_steps=[],
             requires_user_approval=False,
+            staged_cart_id=cart.id if cart else None,
+            original_amount=subtotal,
+            final_amount=subtotal,
             memory_profile=memory_profile,
-            suggested_actions=[f"Buy {target_prod['title']}", "View Spec Comparison"]
+            suggested_actions=suggested_actions
         )
+
+    # -------------------------------------------------------------------
+    # INTENT ROUTER 1: Check Stock Inventory Query (All Products or Specific Product)
+    # -------------------------------------------------------------------
+    if "stock" in msg_lower or "inventory" in msg_lower:
+        t_inv = time.time()
+        is_list_all_stock = any(k in msg_lower for k in ["all", "list", "products in stock", "in the stock", "in stock", "what is in stock", "show stock", "available stock", "catalog"]) or msg_lower.strip() in ["check stock", "stock", "inventory", "check inventory", "check stock inventory"]
+        
+        if is_list_all_stock:
+            prods = db.query(Product).join(Inventory, Product.id == Inventory.product_id).filter(Inventory.stock_quantity > 0).limit(8).all()
+            
+            tool_traces.append(ToolTrace(
+                tool_name="list_stock_inventory",
+                input_args={"filter": "in_stock"},
+                output_summary={"available_skus": len(prods)},
+                execution_time_ms=int((time.time() - t_inv) * 1000)
+            ))
+
+            lines = ["📦 **Live Warehouse Inventory & Stock Levels**\n"]
+            lines.append("Here is the real-time stock availability across our commerce fulfillment centers:\n")
+            suggested_actions = []
+
+            for idx, p in enumerate(prods, 1):
+                inv = db.query(Inventory).filter(Inventory.product_id == p.id).first()
+                qty = inv.stock_quantity if inv else 50
+                status_badge = "🟢 In Stock" if qty > 10 else "🟡 Low Stock"
+                lines.append(f"{idx}. **{p.title}** ({p.category})")
+                lines.append(f"   • **Price**: ₹{p.price:,.0f} | **Available**: **{qty} units** ({status_badge})")
+                lines.append(f"   • **Fulfillment**: Bengaluru Hub (Same-Day Dispatch)\n")
+                if len(suggested_actions) < 2:
+                    suggested_actions.append(f"Buy {p.title}")
+
+            suggested_actions.extend(["View Spec Comparison", "View Cart"])
+            
+            top_p_details = get_product_details(db, prods[0].id) if prods else None
+            top_prod_resp = ProductResponse(**top_p_details) if top_p_details else None
+
+            return AgentChatResponse(
+                reply="\n".join(lines),
+                recommended_product=top_prod_resp,
+                tool_traces=tool_traces,
+                workflow_steps=[],
+                requires_user_approval=False,
+                memory_profile=memory_profile,
+                suggested_actions=suggested_actions
+            )
+        else:
+            rec_info = get_recommendations_tool(db, query=user_msg, user_id=user_id)
+            target_prod = rec_info.get("recommended_product")
+            target_id = target_prod["id"] if target_prod else "prod_001"
+
+            inv_res = check_inventory_tool(db, product_id=target_id)
+            tool_traces.append(ToolTrace(
+                tool_name="check_inventory",
+                input_args={"product_id": target_id},
+                output_summary=inv_res,
+                execution_time_ms=int((time.time() - t_inv) * 1000)
+            ))
+            p_details = get_product_details(db, target_id)
+            prod_resp = ProductResponse(**p_details) if p_details else None
+
+            clean_report = (
+                "📦 **Real-Time Stock Inventory Report**\n\n"
+                f"• **Product**: {inv_res['product_title']} (`{target_id}`)\n"
+                f"• **Available Stock**: **{inv_res['stock_quantity']} units in stock**\n"
+                f"• **Inventory Status**: {inv_res['status']} & Ready for Immediate Dispatch\n"
+                "• **Fulfillment Location**: Main Bengaluru Commerce Hub"
+            )
+
+            return AgentChatResponse(
+                reply=clean_report,
+                recommended_product=prod_resp,
+                tool_traces=tool_traces,
+                workflow_steps=[],
+                requires_user_approval=False,
+                memory_profile=memory_profile,
+                suggested_actions=[f"Buy {target_prod['title'] if target_prod else 'Top Pick'}", "View Spec Comparison"]
+            )
 
     # -------------------------------------------------------------------
     # INTENT ROUTER 2: View Spec Comparison Query

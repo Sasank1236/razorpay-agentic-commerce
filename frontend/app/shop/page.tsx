@@ -77,7 +77,13 @@ export default function ShopPage() {
     }
   };
 
-  const handleInitiateCheckout = async (productId?: string) => {
+  const handleInitiateCheckout = async (productId?: string, customOrderId?: string, customAmount?: number) => {
+    if (customOrderId && customAmount) {
+      setStagedOrderId(customOrderId);
+      setStagedAmount(customAmount);
+      setIsCheckoutOpen(true);
+      return;
+    }
     try {
       const staged = await stageOrderApi();
       setStagedOrderId(staged.id);
@@ -254,7 +260,10 @@ export default function ShopPage() {
         onClose={() => setIsCheckoutOpen(false)}
         orderId={stagedOrderId}
         amount={stagedAmount}
-        onPaymentSuccess={loadCartData}
+        onPaymentSuccess={() => {
+          loadCartData();
+          loadProducts();
+        }}
       />
 
     </div>

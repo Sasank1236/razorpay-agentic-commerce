@@ -10,7 +10,7 @@ import CustomerMemoryBadge from '@/components/CustomerMemoryBadge';
 interface AIChatDrawerProps {
   isOpen: boolean;
   onClose: () => void;
-  onInitiateCheckout: (productId?: string) => void;
+  onInitiateCheckout: (productId?: string, stagedOrderId?: string, stagedAmount?: number) => void;
 }
 
 interface MessageItem {
@@ -278,7 +278,7 @@ export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout }: AI
                   The AI Purchase Agent completed steps 1–10 autonomously. Click below to confirm AI-negotiated price and launch Razorpay Checkout.
                 </p>
                 <button
-                  onClick={() => onInitiateCheckout(msg.recommendedProduct?.id || "prod_001")}
+                  onClick={() => onInitiateCheckout(msg.recommendedProduct?.id || "prod_001", msg.stagedOrderId, msg.finalAmount || msg.negotiatedOffer?.offer_price)}
                   className="mt-3.5 w-full py-3 px-4 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-white font-extrabold text-xs uppercase tracking-widest rounded-xl shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 transition-all active:scale-98"
                 >
                   <ShoppingCart className="w-4 h-4" /> Approve & Pay ₹{(msg.finalAmount || 4184).toLocaleString()} via Razorpay
@@ -294,7 +294,7 @@ export default function AIChatDrawer({ isOpen, onClose, onInitiateCheckout }: AI
                   return (
                     <button
                       key={i}
-                      onClick={() => isApproveAction ? onInitiateCheckout(msg.recommendedProduct?.id || "prod_001") : handleSend(action)}
+                      onClick={() => isApproveAction ? onInitiateCheckout(msg.recommendedProduct?.id || "prod_001", msg.stagedOrderId, msg.finalAmount || msg.negotiatedOffer?.offer_price) : handleSend(action)}
                       className="text-xs bg-slate-800/80 hover:bg-indigo-600/30 text-indigo-300 hover:text-white border border-indigo-500/30 px-3 py-1 rounded-full transition-all flex items-center gap-1"
                     >
                       <span>{action}</span>

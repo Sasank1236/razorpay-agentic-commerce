@@ -201,3 +201,48 @@ def test_spec_comparison_and_buy_specific_product():
     assert buy_data["staged_order_id"] is not None
     assert buy_data["recommended_product"]["title"] == "AudioPhonic H50"
 
+def test_list_cart_and_stock_and_reduction():
+    # 1. Test "list out all the products in the stock"
+    res_stock = client.post("/api/v1/agents/customer/chat", json={
+        "user_id": "user_customer_01",
+        "message": "list out all the the products in the stock"
+    })
+    assert res_stock.status_code == 200
+    stock_data = res_stock.json()
+    assert "Live Warehouse Inventory" in stock_data["reply"] or "Stock Levels" in stock_data["reply"]
+
+    # 2. Test "list out all the products in cart"
+    client.post("/api/v1/orders/cart/user_customer_test/items", json={"product_id": "prod_001", "quantity": 1})
+    res_cart = client.post("/api/v1/agents/customer/chat", json={
+        "user_id": "user_customer_test",
+        "message": "list out all the products in cart"
+    })
+    assert res_cart.status_code == 200
+    cart_data = res_cart.json()
+    assert "Active Shopping Cart" in cart_data["reply"] or "Cart" in cart_data["reply"]
+    assert "SoundMax Pro" in cart_data["reply"]
+
+    # 3. Test inventory reduction on confirm checkout
+    stage_resp = client.post("/api/v1/orders/stage", json={"user_id": "user_customer_test"})
+    assert stage_resp.status_code == 200
+    order_id = stage_resp.json()["id"]
+
+    # Fetch initial stock of prod_001
+    prod_resp = client.get("/api/v1/products/prod_001")
+    initial_stock = prod_resp.json()["stock_quantity"]
+
+    # Verify payment
+    verify_resp = client.post("/api/v1/payments/verify", json={
+        "order_id": order_id,
+        "razorpay_order_id": "order_test_999",
+        "razorpay_payment_id": "pay_test_999",
+        "razorpay_signature": "valid_test_signature"
+    })
+    assert verify_resp.status_code == 200
+
+    # Fetch stock after checkout
+    prod_resp_after = client.get("/api/v1/products/prod_001")
+    new_stock = prod_resp_after.json()["stock_quantity"]
+    assert new_stock == initial_stock - 1
+
+
