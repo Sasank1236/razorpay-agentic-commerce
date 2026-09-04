@@ -75,7 +75,11 @@ def extract_and_update_customer_memory(db: Session, user_id: str = "user_custome
         preferred_brands.append("Sony")
 
     # 2. Extract Avoided Traits
-    if "bulky" in msg_lower or "don't like bulky" in msg_lower or "not bulky" in msg_lower or "heavy" in msg_lower:
+    # Only record "avoid bulky" when the message actually negates it —
+    # otherwise "I like heavy, bulky headphones" would incorrectly get
+    # flagged as avoiding bulky designs.
+    negation_present = any(neg in msg_lower for neg in ["don't like", "dont like", "no", "avoid", "hate", "not", "without"])
+    if ("bulky" in msg_lower or "heavy" in msg_lower) and negation_present:
         if "bulky (>220g)" not in avoid_traits:
             avoid_traits.append("bulky (>220g)")
 

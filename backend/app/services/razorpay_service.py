@@ -51,9 +51,13 @@ class RazorpayService:
         """
         Verifies the HMAC SHA256 signature returned by Razorpay Checkout.
         """
-        if self.key_secret == "dummy_secret_key" or razorpay_signature.startswith("sig_test_") or razorpay_signature == "valid_test_signature":
-            # Test mode validation pass for simulated checkout
-            return True
+        is_dummy_mode = self.key_secret == "dummy_secret_key"
+        if is_dummy_mode:
+            # Only auto-pass when NO real secret is configured (local/demo mode).
+            # This never fires once a real RAZORPAY_KEY_SECRET is set in .env,
+            # so it can't be used to bypass verification in a live deployment.
+            if razorpay_signature.startswith("sig_test_") or razorpay_signature == "valid_test_signature":
+                return True
 
         generated_signature = hmac.new(
             bytes(self.key_secret, 'utf-8'),

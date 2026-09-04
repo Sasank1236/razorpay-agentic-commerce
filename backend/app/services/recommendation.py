@@ -18,7 +18,7 @@ def calculate_product_score(
       - 15% Specs match (mic, battery, anc, etc.) (-25 Disliked Trait Penalty)
       - 10% Popularity / Bestseller tags
     """
-    max_budget = query_intent.get("max_price", 5000)
+    max_budget = query_intent.get("max_price") or 5000
     category = query_intent.get("category", "")
     priority_features = query_intent.get("priorities", ["calls", "battery"])
 
@@ -104,7 +104,7 @@ def get_hybrid_recommendations(
     """
     user_preferences = user_preferences or {}
     category = extracted_intent.get("category", "Audio")
-    max_price = extracted_intent.get("max_price", 5000)
+    max_price = extracted_intent.get("max_price") or 5000
 
     # Base query: Join Inventory to enforce stock_quantity > 0
     query_builder = db.query(Product).join(Inventory, Product.id == Inventory.product_id).filter(

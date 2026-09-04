@@ -103,8 +103,8 @@ export interface CampaignFeedbackLoop {
   margin_impact: string;
   current_discount_percent: number;
   recommended_discount_percent: number;
-  ai_conclusion: str;
-  recommended_adjustment: str;
+  ai_conclusion: string;
+  recommended_adjustment: string;
 }
 
 export interface MerchantGrowthResponse {

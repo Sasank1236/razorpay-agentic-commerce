@@ -50,7 +50,10 @@ export default function CheckoutModal({
     try {
       // 1. Backend Order Creation (Safety: Amount calculated server-side in paise)
       const razorpayOrder = await createRazorpayOrderApi(orderId);
-      const razorpayKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || razorpayOrder.key_id || "rzp_test_TXCnSzbrn3Uadx";
+      // Prefer an explicit env override, otherwise trust the key_id the
+      // backend returned (which reflects whatever RAZORPAY_KEY_ID is
+      // configured server-side). No hardcoded fallback key.
+      const razorpayKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || razorpayOrder.key_id;
 
       // Load Razorpay Standard Checkout JS Script
       const isLoaded = await loadRazorpayScript();

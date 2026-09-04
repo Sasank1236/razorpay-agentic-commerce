@@ -35,7 +35,7 @@ def extract_intent_from_query(query: str, memory_ceiling: float = 5000.0) -> Dic
         "priorities": ["calls", "battery", "performance", "display", "mic"]
     }
 
-def search_products(db: Session, query: str, category: Optional[str] = None, max_price: Optional[float] = None) -> List[Dict[str, Any]]:
+def search_products(db: Session, query: str, category: Optional[str] = None, max_price: Optional[float] = None, user_id: str = "user_customer_01") -> List[Dict[str, Any]]:
     start_time = time.time()
     q = db.query(Product)
     
@@ -70,7 +70,7 @@ def search_products(db: Session, query: str, category: Optional[str] = None, max
 
     search_evt = SearchEvent(
         id=f"se_{uuid.uuid4().hex[:8]}",
-        user_id="user_customer_01",
+        user_id=user_id,
         query=query,
         extracted_intent={"category": category, "max_price": max_price},
         results_count=len(out)

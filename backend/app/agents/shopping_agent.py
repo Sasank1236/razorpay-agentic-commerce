@@ -116,7 +116,7 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
     # -------------------------------------------------------------------
     if not is_explicit_purchase and intent_type == "discovery":
         t_search = time.time()
-        search_res = search_products(db, query=user_msg, category=extracted_category, max_price=max_budget)
+        search_res = search_products(db, query=user_msg, category=extracted_category, max_price=max_budget, user_id=user_id)
         tool_traces.append(ToolTrace(
             tool_name="search_products_db",
             input_args={"query": user_msg, "category": extracted_category, "max_price": max_budget},
@@ -180,7 +180,7 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
 
     # STEP 2: Search Products
     t2 = time.time()
-    search_res = search_products(db, query=user_msg, category=extracted_category, max_price=max_budget)
+    search_res = search_products(db, query=user_msg, category=extracted_category, max_price=max_budget, user_id=user_id)
     tool_traces.append(ToolTrace(
         tool_name="search_products",
         input_args={"query": user_msg, "category": extracted_category, "max_price": max_budget},
@@ -291,8 +291,9 @@ def run_shopping_agent(db: Session, request: AgentChatRequest) -> AgentChatRespo
     ))
 
     # STEP 9: Calculate Final Price
+    # Reuses the coupon negotiated in Step 8 instead of negotiating again.
     t9 = time.time()
-    price_res = calculate_final_price_tool(db, product_id=best_p_id, quantity=1, query=user_msg, user_id=user_id)
+    price_res = calculate_final_price_tool(db, product_id=best_p_id, quantity=1, query=user_msg, user_id=user_id, precomputed_coupon=coupon_res)
     tool_traces.append(ToolTrace(
         tool_name="calculate_final_price",
         input_args={"product_id": best_p_id, "quantity": 1},

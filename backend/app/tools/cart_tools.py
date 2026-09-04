@@ -53,14 +53,25 @@ def apply_coupon_tool(db: Session, query: str, amount: float, product_id: str = 
     log_agent_action(db, "customer", "negotiate_dynamic_coupon", {"query": query, "product_id": product_id, "original_amount": amount}, out, start_time)
     return out
 
-def calculate_final_price_tool(db: Session, product_id: str, quantity: int = 1, query: str = "", user_id: str = "user_customer_01") -> Dict[str, Any]:
+def calculate_final_price_tool(
+    db: Session,
+    product_id: str,
+    quantity: int = 1,
+    query: str = "",
+    user_id: str = "user_customer_01",
+    precomputed_coupon: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
     start_time = time.time()
     product = db.query(Product).filter(Product.id == product_id).first()
     if not product:
         return {"error": "Product not found"}
 
     original_amount = round(product.price * quantity, 2)
-    coupon_res = apply_coupon_tool(db, query=query, amount=original_amount, product_id=product_id, user_id=user_id)
+    # Reuse an already-negotiated coupon (e.g. from the workflow's own
+    # negotiation step) instead of calling negotiate_dynamic_coupon again —
+    # avoids double DB writes / duplicate AgentAction log rows for one
+    # logical negotiation.
+    coupon_res = precomputed_coupon or apply_coupon_tool(db, query=query, amount=original_amount, product_id=product_id, user_id=user_id)
 
     out = {
         "product_id": product_id,
@@ -88,6 +99,14 @@ def add_to_cart_tool(db: Session, product_id: str, quantity: int = 1, user_id: s
         return {"error": "Product not found"}
 
     item = db.query(CartItem).filter(CartItem.cart_id == cart.id, CartItem.product_id == product_id).first()
+    existing_qty = item.quantity if item else 0
+    requested_total_qty = existing_qty + quantity
+
+    inv = db.query(Inventory).filter(Inventory.product_id == product_id).first()
+    available_stock = inv.stock_quantity if inv else 50
+    if requested_total_qty > available_stock:
+        return {"error": f"Only {available_stock} unit(s) of '{product.title}' in stock (cart already has {existing_qty})."}
+
     if item:
         item.quantity += quantity
     else:
