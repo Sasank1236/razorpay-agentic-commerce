@@ -23,7 +23,11 @@ class Settings(BaseSettings):
     
     # CORS — accepts a plain URL, comma-separated string, or JSON array string
     # e.g. on Render you can just type:  https://your-app.vercel.app
-    BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    BACKEND_CORS_ORIGINS: List[str] = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://razorpay-agentic-commerce-beige.vercel.app",
+    ]
 
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
     @classmethod
