@@ -1,13 +1,4 @@
 {
-  "buildCommand": "npm install && npm run build",
-  "outputDirectory": ".next",
-  "framework": "nextjs",
-  "rewrites": [
-    {
-      "source": "/api/proxy/:path*",
-      "destination": "https://razorbuy-backend.onrender.com/api/v1/:path*"
-    }
-  ],
   "headers": [
     {
       "source": "/(.*)",
